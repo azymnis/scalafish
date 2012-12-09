@@ -6,13 +6,13 @@ import scala.util.Random
 
 object MatrixFactorizer {
   def main(args: Array[String]) {
-    val (real, data) = randSparseMatrix(200, 200, 10, 0.05, 0.001)
+    val (real, data) = randSparseMatrix(200, 200, 20, 0.05, 0.001)
     val mf = new MatrixFactorizer(data, 20)
-    (1 to 20).foreach{ i =>
-      mf.update
+    (0 to 50).foreach{ i =>
       val obj = mf.currentObjective
       val relerr = mf.frobNorm(mf.currentGuess - real) / mf.frobNorm(real)
       println("iteration: " + i + ", obj: " + obj + ", relerr: " + relerr)
+      mf.update
     }
   }
 
@@ -29,7 +29,7 @@ object MatrixFactorizer {
     (realMat, out)
   }
 
-  val defaultParams = FactorizerParams(1e-1, 1e-3)
+  val defaultParams = FactorizerParams(1e-6, 1e-3)
 }
 
 class MatrixFactorizer(data: CSCMatrix[Double], rank: Int,
@@ -51,8 +51,8 @@ class MatrixFactorizer(data: CSCMatrix[Double], rank: Int,
 
   def update {
     val newAlpha = params.alpha / iteration
-    L := L - (L * (params.mu / 2) + currentDelta.t * R ) * newAlpha
-    R := R - (R * (params.mu / 2) + currentDelta * L ) * newAlpha
+    L := L - (L * (params.mu / 2) + currentDelta * R ) * newAlpha
+    R := R - (R * (params.mu / 2) + currentDelta.t * L ) * newAlpha
     iteration += 1
   }
 
