@@ -4,13 +4,13 @@ import breeze.linalg._
 
 import scala.util.Random
 
-object MatrixFactorizer {
+object SimpleMatrixFactorizer {
   def main(args: Array[String]) {
-    val (real, data) = randSparseMatrix(200, 200, 20, 0.05, 0.001)
-    val mf = new MatrixFactorizer(data, 20)
+    val (real, data) = randSparseMatrix(1000, 200, 10, 0.20, 0.001)
+    val mf = new SimpleMatrixFactorizer(data, 10, 1e-3, 1e-3)
     (0 to 50).foreach{ i =>
       val obj = mf.currentObjective
-      val relerr = mf.frobNorm(mf.currentGuess - real) / mf.frobNorm(real)
+      val relerr = math.sqrt(mf.frobNorm(mf.currentGuess - real)) / math.sqrt(mf.frobNorm(real))
       println("iteration: " + i + ", obj: " + obj + ", relerr: " + relerr)
       mf.update
     }
@@ -28,12 +28,10 @@ object MatrixFactorizer {
     }
     (realMat, out)
   }
-
-  val defaultParams = FactorizerParams(1e-6, 1e-3)
 }
 
-class MatrixFactorizer(data: CSCMatrix[Double], rank: Int,
-    params: FactorizerParams = MatrixFactorizer.defaultParams) {
+class SimpleMatrixFactorizer(data: CSCMatrix[Double], rank: Int,
+    mu: Double, alpha: Double) {
 
   val L = DenseMatrix.rand(data.rows, rank)
   val R = DenseMatrix.rand(data.cols, rank)
@@ -45,14 +43,14 @@ class MatrixFactorizer(data: CSCMatrix[Double], rank: Int,
   data.activeKeysIterator.foreach{ case(r, c) => pat(r, c) = 1.0 }
 
   def currentObjective: Double =
-    frobNorm(currentDelta) + (params.mu / 2) * (frobNorm(L) + frobNorm(R))
+    frobNorm(currentDelta) + (mu / 2) * (frobNorm(L) + frobNorm(R))
 
   def currentDelta = pat :* (L*R.t - data)
 
   def update {
-    val newAlpha = params.alpha / iteration
-    L := L - (L * (params.mu / 2) + currentDelta * R ) * newAlpha
-    R := R - (R * (params.mu / 2) + currentDelta.t * L ) * newAlpha
+    val newAlpha = alpha / iteration
+    L := L - (L * (mu / 2) + currentDelta * R ) * newAlpha
+    R := R - (R * (mu / 2) + currentDelta.t * L ) * newAlpha
     iteration += 1
   }
 
@@ -61,5 +59,3 @@ class MatrixFactorizer(data: CSCMatrix[Double], rank: Int,
   def frobNorm(m: DenseMatrix[Double]): Double =
     m mapValues { math.pow(_, 2) } sum
 }
-
-case class FactorizerParams(mu: Double, alpha: Double)
