@@ -1,6 +1,6 @@
 package org.zymnis.scalafish
 
-import breeze.linalg._
+import breeze.linalg.{DenseMatrix, CSCMatrix}
 
 import akka.actor._
 import akka.dispatch.{Await, ExecutionContext, Future}
@@ -12,7 +12,7 @@ import scala.util.Random
 
 object DistributedMatrixFactorizer extends App {
   val rows = 1000
-  val cols = 100
+  val cols = 200
   val realRank = 10
   val factorRank = 20
   val slices = 10
@@ -30,7 +30,7 @@ object DistributedMatrixFactorizer extends App {
 
 sealed trait FactorizerMessage
 case class UpdateWorkerData(data: CSCMatrix[Double]) extends FactorizerMessage
-case class UpdateWorkerR(newR: DenseMatrix[Double]) extends FactorizerMessage
+case class UpdateWorkerR(newR: Iterable[DenseMatrix[Double]]) extends FactorizerMessage
 case class InitializeMaster(data: Iterable[CSCMatrix[Double]]) extends FactorizerMessage
 case object DataUpdated extends FactorizerMessage
 
@@ -40,14 +40,14 @@ class Master(cols: Int, rank: Int, slices: Int) extends Actor {
   implicit val timeout = Timeout(5 seconds)
   implicit val ec = ExecutionContext.defaultExecutionContext(context.system)
 
-  var R: DenseMatrix[Double] = _
+  var R: Vector[DenseMatrix[Double]] = _
   val actors = (1 to slices).map{ ind =>
-    context.actorOf(Props(new Worker(cols, rank)), name = "worker_" + ind)
+    context.actorOf(Props(new Worker(cols, rank, slices)), name = "worker_" + ind)
   }
 
   override def preStart() = {
     println("starting up master")
-    R = DenseMatrix.rand(cols, rank)
+    R = Vector.fill(slices)(DenseMatrix.rand(cols / slices, rank))
   }
 
   def receive = {
@@ -64,15 +64,17 @@ class Master(cols: Int, rank: Int, slices: Int) extends Actor {
   }
 }
 
-class Worker(cols: Int, rank: Int) extends Actor {
-  var R: DenseMatrix[Double] = _
+class Worker(cols: Int, rank: Int, slices: Int) extends Actor {
+  var R: Vector[DenseMatrix[Double]] = _
   var L: DenseMatrix[Double] = _
-  var data: CSCMatrix[Double] = _
-  var pat: DenseMatrix[Double] = _
+  var data: Vector[CSCMatrix[Double]] = _
+  var pat: Vector[DenseMatrix[Double]] = _
+
+  val sliceSize = cols / slices
 
   override def preStart() = {
     println("starting up worker")
-    R = DenseMatrix.zeros[Double](cols, rank)
+    R = Vector.fill(slices)(DenseMatrix.zeros[Double](sliceSize, rank))
   }
 
   def receive = {
@@ -80,19 +82,21 @@ class Worker(cols: Int, rank: Int) extends Actor {
       println("updating data for worker: " + self.path)
       L = DenseMatrix.rand(mat.rows, rank)
 
-      data = CSCMatrix.zeros[Double](mat.rows, mat.cols)
-      pat = DenseMatrix.zeros[Double](data.rows, data.cols)
+      data = Vector.fill(slices)(CSCMatrix.zeros[Double](mat.rows, sliceSize))
+      pat = Vector.fill(slices)(DenseMatrix.zeros[Double](mat.rows, sliceSize))
 
       mat.activeKeysIterator.foreach{ case(r, c) =>
-        data(r, c) = mat(r, c)
-        pat(r, c) = 1.0
+        val itIndex = c / sliceSize
+        val colInd = c % sliceSize
+        data(itIndex)(r, colInd) = mat(r, c)
+        pat(itIndex)(r, colInd) = 1.0
       }
 
       sender ! DataUpdated
     }
-    case UpdateWorkerR(mat) => {
+    case UpdateWorkerR(mats) => {
       println("updating R for worker: " + self.path)
-      R := mat
+      mats.zipWithIndex.foreach{ case(r, ind) => R(ind) := r }
       sender ! DataUpdated
     }
   }
