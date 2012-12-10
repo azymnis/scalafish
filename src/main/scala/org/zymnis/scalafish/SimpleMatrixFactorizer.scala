@@ -28,16 +28,16 @@ class SimpleMatrixFactorizer(data: CSCMatrix[Double], rank: Int,
   data.activeKeysIterator.foreach{ case(r, c) => pat(r, c) = 1.0 }
 
   def currentObjective: Double =
-    MatrixUtil.frobNorm(currentDelta) + (mu / 2) * (MatrixUtil.frobNorm(L) + MatrixUtil.frobNorm(R))
+    0.5 * (MatrixUtil.frobNorm(currentDelta) + mu * (MatrixUtil.frobNorm(L) + MatrixUtil.frobNorm(R)))
 
   def currentDelta = pat :* (L*R.t - data)
 
   def update {
     val newAlpha = alpha / iteration
-    L := L - (L * (mu / 2) + currentDelta * R ) * newAlpha
-    R := R - (R * (mu / 2) + currentDelta.t * L ) * newAlpha
+    L := L - (L * mu + currentDelta * R) * newAlpha
+    R := R - (R * mu + currentDelta.t * L) * newAlpha
     iteration += 1
   }
 
-  def currentGuess = L*R.t
+  def currentGuess = L * R.t
 }
