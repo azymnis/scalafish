@@ -4,29 +4,14 @@ import breeze.linalg._
 
 import scala.util.Random
 
-object SimpleMatrixFactorizer {
-  def main(args: Array[String]) {
-    val (real, data) = randSparseMatrix(1000, 200, 10, 0.20, 0.001)
-    val mf = new SimpleMatrixFactorizer(data, 10, 1e-3, 1e-3)
-    (0 to 50).foreach{ i =>
-      val obj = mf.currentObjective
-      val relerr = math.sqrt(mf.frobNorm(mf.currentGuess - real)) / math.sqrt(mf.frobNorm(real))
-      println("iteration: " + i + ", obj: " + obj + ", relerr: " + relerr)
-      mf.update
-    }
-  }
-
-  def randSparseMatrix(rows: Int, cols: Int, rank: Int, p: Double, noise: Double): (DenseMatrix[Double], CSCMatrix[Double]) = {
-    val L = DenseMatrix.rand(rows, rank)
-    val R = DenseMatrix.rand(cols, rank)
-    val realMat = L * R.t + DenseMatrix.rand(rows, cols) * noise
-    val out = CSCMatrix.zeros[Double](rows, cols)
-    val rand = new Random
-    realMat.keysIterator.foreach{ case(r, c) =>
-      if(rand.nextDouble < p)
-        out(r, c) = realMat(r, c)
-    }
-    (realMat, out)
+object SimpleMatrixFactorizer extends App {
+  val (real, data) = MatrixUtil.randSparseMatrix(200, 200, 10, 0.10, 0.001)
+  val mf = new SimpleMatrixFactorizer(data, 15, 1e-3, 1e-2)
+  (0 to 20).foreach{ i =>
+    val obj = mf.currentObjective
+    val relerr = math.sqrt(MatrixUtil.frobNorm(mf.currentGuess - real)) / math.sqrt(MatrixUtil.frobNorm(real))
+    println("iteration: " + i + ", obj: " + obj + ", relerr: " + relerr)
+    mf.update
   }
 }
 
@@ -43,7 +28,7 @@ class SimpleMatrixFactorizer(data: CSCMatrix[Double], rank: Int,
   data.activeKeysIterator.foreach{ case(r, c) => pat(r, c) = 1.0 }
 
   def currentObjective: Double =
-    frobNorm(currentDelta) + (mu / 2) * (frobNorm(L) + frobNorm(R))
+    MatrixUtil.frobNorm(currentDelta) + (mu / 2) * (MatrixUtil.frobNorm(L) + MatrixUtil.frobNorm(R))
 
   def currentDelta = pat :* (L*R.t - data)
 
@@ -55,7 +40,4 @@ class SimpleMatrixFactorizer(data: CSCMatrix[Double], rank: Int,
   }
 
   def currentGuess = L*R.t
-
-  def frobNorm(m: DenseMatrix[Double]): Double =
-    m mapValues { math.pow(_, 2) } sum
 }
