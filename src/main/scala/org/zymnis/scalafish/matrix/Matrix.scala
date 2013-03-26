@@ -28,6 +28,8 @@ trait Matrix { self =>
     def indexer = self.indexer.transpose
     def apply(row: Int, col: Int) = self.apply(col, row)
     def update(row: Int, col: Int, f: Float) = self.update(col, row, f)
+    // Transpose of a transpose is identity:
+    override def t = self
   }
 
   // Super inefficient, just for debug
