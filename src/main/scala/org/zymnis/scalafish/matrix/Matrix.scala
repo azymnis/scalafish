@@ -1,5 +1,7 @@
 package org.zymnis.scalafish.matrix
 
+import scala.math.Equiv
+
 /** Addresses the specific needs we have for matrices
  * Specifically optimized for avoiding allocations, and the (Int,Int) => Float case
  * And mutability to minimize data copying
@@ -28,6 +30,8 @@ trait Matrix { self =>
     def indexer = self.indexer.transpose
     def apply(row: Int, col: Int) = self.apply(col, row)
     def update(row: Int, col: Int, f: Float) = self.update(col, row, f)
+    // Transpose of a transpose is identity:
+    override def t = self
   }
 
   // Super inefficient, just for debug
@@ -55,6 +59,18 @@ object Matrix {
     m match {
       case dm: DenseMatrix => DenseMatrix.frobNorm2(dm)
       case sm: SparseMatrix => sm.frobNorm2
+    }
+  }
+
+  implicit val defaultEquiv = equiv(1e-6)
+  // TODO this doesn't need to allocate
+  def equiv(frobEps: Double): Equiv[Matrix] = Equiv.fromFunction[Matrix] { (m1, m2) =>
+    import Syntax._
+    (m1.rows == m2.rows) && (m2.cols == m2.cols) && {
+      val temp = DenseMatrix.zeros(m1.rows, m1.cols)
+      temp := m1 - m2
+      val fnorm = frobNorm2(temp)
+      fnorm < frobEps
     }
   }
 }
