@@ -43,19 +43,18 @@ class DenseMatrix private (override val rows: Int, override val cols: Int, overr
     data(block).getFloat(indexer.rowCol(blockrow, col).toInt * BYTES_PER_FLOAT)
   }
 
-  def fill(f: Float): Unit = {
+  def fill(f: Float): this.type = {
     (0 until blocks).foreach { b =>
       val bb = data(b)
       val rowsInThisBlock = if(b == blocks - 1) rows_in_last_block else rows_per_block
       val floats = rowsInThisBlock * cols
       var idx = 0
       while(idx < floats) {
-        bb.putFloat(idx, f)
+        bb.putFloat(idx * BYTES_PER_FLOAT, f)
         idx += 1
       }
     }
-    // Last block:
-
+    this
   }
 
   def update(row: Int, col: Int, f: Float): Unit = {
@@ -67,7 +66,14 @@ class DenseMatrix private (override val rows: Int, override val cols: Int, overr
 
 object DenseMatrix {
   val BYTES_PER_FLOAT = 4
-  def zeros(rows: Int, cols: Int): DenseMatrix = new DenseMatrix(rows, cols, Indexer.rowMajor(cols))
+  def zeros(rows: Int, cols: Int): DenseMatrix =
+    new DenseMatrix(rows, cols, Indexer.rowMajor(cols))
+
+  def apply(su: ShapedUpdater): DenseMatrix = {
+    val z = zeros(su.rows, su.cols)
+    z := su
+    z
+  }
 
   def rand(rows: Int, cols: Int): DenseMatrix = {
     val mat = zeros(rows, cols)

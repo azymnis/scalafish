@@ -4,12 +4,14 @@ class MatrixOps(mat: Matrix) {
   import MatrixUpdater._
   // Not safe to do L *= L, or any derived matrix
   // TODO: should have some checks on that
-  def *(that: Matrix): MatrixUpdater = product(mat, that)
+  def *(that: Matrix): ShapedUpdater = product(mat, that)
 
   def +(that: Matrix): SumMatrixUpdater =
     new SumMatrixUpdater(Vector(mat, that))
 
-  def +(that: MatrixUpdater): MatrixUpdater = new MatrixUpdater {
+  def +(that: MatrixUpdater): ShapedUpdater = new ShapedUpdater {
+    def rows = mat.rows
+    def cols = mat.rows
     def update(newM: Matrix) {
       that.update(newM)
       // Now do the plus:
@@ -25,17 +27,19 @@ class MatrixOps(mat: Matrix) {
     mat
   }
 
-  def -(that: Matrix): MatrixUpdater = diff(mat, that)
+  def -(that: Matrix): ShapedUpdater = diff(mat, that)
   def -=(that: Matrix): Matrix = mat := diff(mat, that)
 
-  def *(that: Float): MatrixUpdater = scaled(mat, that)
+  def *(that: Float): ShapedUpdater = scaled(mat, that)
   def *=(that: Float): Matrix = mat := scale(that)
-  def *:(that: Float): MatrixUpdater = scaled(mat, that)
+  def *:(that: Float): ShapedUpdater = scaled(mat, that)
 }
 
 object Syntax {
   implicit def toOps(mat: Matrix): MatrixOps = new MatrixOps(mat)
-  implicit def setter(m: Matrix): MatrixUpdater = new MatrixUpdater {
+  implicit def setter(m: Matrix): ShapedUpdater = new ShapedUpdater {
+    def rows = m.rows
+    def cols = m.cols
     def update(that: Matrix) = {
       require(m.rows == that.rows, "Rows do not match")
       require(m.cols == that.cols, "Cols do not match")

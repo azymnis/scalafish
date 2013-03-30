@@ -7,9 +7,7 @@ import scala.math.Equiv
  * And mutability to minimize data copying
  * TODO: make this sealed for matching
  */
-trait Matrix { self =>
-  def rows: Int
-  def cols: Int
+trait Matrix extends Shaped { self =>
 
   def size: Long = rows.toLong * cols.toLong
 
