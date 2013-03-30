@@ -8,22 +8,25 @@ import scala.util.Random
 
 
 object SimpleMatrixFactorizer extends App {
-  val (rows, cols, rank) = (200, 100, 10)
-  val real = DenseMatrix.randLowRank(rows, cols, rank)
-  val data = SparseMatrix.sample(0.1, real)
-  val approx = DenseMatrix.zeros(rows, cols) // probably don't materialize this in the real deal
-
-  val mf = new SimpleMatrixFactorizer(data, 15, 1e-3f, 1e-2f)
-  (0 to 20).foreach{ i =>
-    val obj = mf.currentObjective
-    approx := mf.currentGuess
-    approx := approx - real
-    val relerr = math.sqrt(Matrix.frobNorm2(approx)) / math.sqrt(Matrix.frobNorm2(real))
-    println("iteration: " + i + ", obj: " + obj + ", relerr: " + relerr)
-    mf.update
+  def example(rows: Int, cols: Int, rank: Int) {
+    val real = DenseMatrix.randLowRank(rows, cols, rank)
+    val data = SparseMatrix.sample(0.1, real)
+    val approx = DenseMatrix.zeros(rows, cols) // probably don't materialize this in the real deal
+    println(real)
+    println(data)
+    val mf = new SimpleMatrixFactorizer(data, 4, 1e-3f, 1e-2f)
+    (0 to 4).foreach{ i =>
+      val obj = mf.currentObjective
+      approx := mf.currentGuess
+      println(approx)
+      approx -= real
+      val relerr = math.sqrt(Matrix.frobNorm2(approx)) / math.sqrt(Matrix.frobNorm2(real))
+      println("iteration: " + i + ", obj: " + obj + ", relerr: " + relerr)
+      mf.update
+    }
+    println(approx)
+    println(mf.L)
   }
-  println(approx)
-  println(mf.L)
 }
 
 class SimpleMatrixFactorizer(data: SparseMatrix, rank: Int, mu: Float, alpha: Float) {
@@ -54,19 +57,36 @@ class SimpleMatrixFactorizer(data: SparseMatrix, rank: Int, mu: Float, alpha: Fl
           sum += L(row, rankIdx) * R(col, rankIdx)
           rankIdx += 1
         }
-        oldDelta.update(row, col, (sum - data(idx)).toFloat)
+        val newV = (sum - data(idx)).toFloat
+        oldDelta.update(row, col, newV)
       }
     }
   }
 
   def update {
+    /*
+  currentDelta = pat :* (L*R.t - data)
+
+  update {
+    val newAlpha = alpha / iteration
+    L := L - (L * mu + currentDelta * R) * newAlpha
+    R := R - (R * mu + currentDelta.t * L) * newAlpha
+    iteration += 1
+  }
+     */
     val newAlpha = alpha / iteration
 
     currentDelta := delta
     currentDelta *= newAlpha
 
     L *= (1.0f - mu * newAlpha)
+    // TODO make a function for this
+    // L -= U*V  == L = - ((-L) + U*V)
+    MatrixUpdater.negate.update(L)
+    println(L)
     L += (currentDelta * R)
+    println(L)
+    MatrixUpdater.negate.update(L)
 
     currentDelta := delta
     // Slightly out of date by the end, but cheaper
@@ -74,8 +94,13 @@ class SimpleMatrixFactorizer(data: SparseMatrix, rank: Int, mu: Float, alpha: Fl
     currentDelta *= newAlpha
 
     R *= (1.0f - mu * newAlpha)
+    // TODO make a function for this
+    // R -= U*V  == R = - ((-R) + U*V)
+    MatrixUpdater.negate.update(R)
     R += (currentDelta.t * L)
+    MatrixUpdater.negate.update(R)
 
+    println(currentDelta)
     iteration += 1
   }
 
