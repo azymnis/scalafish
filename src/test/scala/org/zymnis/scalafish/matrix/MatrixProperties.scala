@@ -215,4 +215,40 @@ object MatrixProperties extends Properties("Matrix") {
       diff < FNORM_EPS
     }
 
+  // MatrixUpdaters work as expected:
+  // "C += A * B is C = C + (A * B)") = forAll (a:
+  def incrementProductLaw(rows: Int, cols: Int, inc: Boolean = true)(implicit cons: Arbitrary[MatrixCons]) = {
+    val density = scala.math.random
+    implicit val arb = Arbitrary(denseOrSparse(rows, cols, density))
+
+    val eq = Equiv[Matrix].equiv _
+
+    forAll { (a: Matrix, b: Matrix) =>
+      val c = newMatrix(rows, rows)
+      c := DenseMatrix.rand(rows, rows)
+      val c2 = newMatrix(rows, rows)
+      val temp = newMatrix(rows, rows)
+      temp := a * b.t
+      if(inc) {
+        c2 := c + temp
+        // Different way
+        c += a * b.t
+      }
+      else {
+        c2 := c - temp
+        // Different way
+        c -= a * b.t
+      }
+      eq(c, c2)
+    }
+  }
+  property("C += A*B is the same as C = C + (A*B)") = incrementProductLaw(2,3)
+  property("C += A*B is the same as C = C + (A*B)") = incrementProductLaw(2,30)
+  property("C += A*B is the same as C = C + (A*B)") = incrementProductLaw(20,3)
+  property("C += A*B is the same as C = C + (A*B)") = incrementProductLaw(1,1)
+
+  property("C -= A*B is the same as C = C - (A*B)") = incrementProductLaw(2,3,false)
+  property("C -= A*B is the same as C = C - (A*B)") = incrementProductLaw(2,30,false)
+  property("C -= A*B is the same as C = C - (A*B)") = incrementProductLaw(20,3,false)
+  property("C -= A*B is the same as C = C - (A*B)") = incrementProductLaw(1,1,false)
 }

@@ -4,26 +4,25 @@ class MatrixOps(mat: Matrix) {
   import MatrixUpdater._
   // Not safe to do L *= L, or any derived matrix
   // TODO: should have some checks on that
-  def *(that: Matrix): ShapedUpdater = product(mat, that)
+  def *(that: Matrix): ProductUpdater = ProductUpdater(mat, that)
 
   def +(that: Matrix): SumMatrixUpdater =
     new SumMatrixUpdater(Vector(mat, that))
 
-  def +(that: MatrixUpdater): ShapedUpdater = new ShapedUpdater {
-    def rows = mat.rows
-    def cols = mat.rows
-    def update(newM: Matrix) {
-      that.update(newM)
-      // Now do the plus:
-      plus(mat).update(newM)
-    }
-  }
+  def +(that: SumMatrixUpdater): SumMatrixUpdater =
+    that + mat
 
   def +=(that: Matrix): Matrix = mat := plus(that)
-  def +=(that: MatrixUpdater): Matrix = {
-    //mat = mat + that
-    val newUpdater = this + that
-    newUpdater.update(mat)
+  def +=(that: ProductUpdater): Matrix = {
+    require(that.coeff == 0.0)
+    val newPU = ProductUpdater(that.m1, that.m2, 1.0, 1.0)
+    newPU.update(mat)
+    mat
+  }
+  def -=(that: ProductUpdater): Matrix = {
+    require(that.coeff == 0.0)
+    val newPU = ProductUpdater(that.m1, that.m2, 1.0, -1.0)
+    newPU.update(mat)
     mat
   }
 
