@@ -1,11 +1,20 @@
 package org.zymnis.scalafish.matrix
 
+trait Shaped {
+  def rows: Int
+  def cols: Int
+}
+
 trait MatrixUpdater {
   def update(m: Matrix): Unit
 }
 
+trait ShapedUpdater extends MatrixUpdater with Shaped
+
 object MatrixUpdater {
-  def product(m1: Matrix, m2: Matrix): MatrixUpdater = new MatrixUpdater {
+  def product(m1: Matrix, m2: Matrix): ShapedUpdater = new ShapedUpdater {
+    def rows = m1.rows
+    def cols = m2.cols
     // TODO perhaps optimize this for cache locality, assume m1 is rowMajor for now
     def update(result: Matrix) = {
       require(result.rows == m1.rows, "Rows do not match")
@@ -32,7 +41,9 @@ object MatrixUpdater {
     }
   }
 
-  def plus(m: Matrix): MatrixUpdater = new MatrixUpdater {
+  def plus(m: Matrix): ShapedUpdater = new ShapedUpdater {
+    def rows = m.rows
+    def cols = m.cols
     def update(that: Matrix) = {
       require(m.rows == that.rows, "Rows do not match")
       require(m.cols == that.cols, "Cols do not match")
@@ -49,7 +60,9 @@ object MatrixUpdater {
     }
   }
 
-  def diff(m1: Matrix, m2: Matrix): MatrixUpdater = new MatrixUpdater {
+  def diff(m1: Matrix, m2: Matrix): ShapedUpdater = new ShapedUpdater {
+    def rows = m1.rows
+    def cols = m1.cols
     // TODO perhaps optimize this for cache locality, assume m1 is rowMajor for now
     def update(result: Matrix) = {
       require(m1.rows == m2.rows, "Rows do not match")
@@ -89,7 +102,10 @@ object MatrixUpdater {
   }
 
   // Macros would be huge here:
-  def scaled(oldM: Matrix, scalar: Float): MatrixUpdater = new MatrixUpdater {
+  def scaled(oldM: Matrix, scalar: Float): ShapedUpdater = new ShapedUpdater {
+    def rows = oldM.rows
+    def cols = oldM.cols
+
     def update(m: Matrix) {
       var rowIdx = 0
       while(rowIdx < m.rows) {
@@ -121,7 +137,9 @@ object MatrixUpdater {
   }
 }
 
-class SumMatrixUpdater(ms: IndexedSeq[Matrix]) extends MatrixUpdater {
+class SumMatrixUpdater(ms: IndexedSeq[Matrix]) extends ShapedUpdater {
+  def rows = ms(0).rows
+  def cols = ms(0).cols
   // TODO perhaps optimize this for cache locality, assume m1 is rowMajor for now
   def update(result: Matrix) = {
     val rows = ms.view.map { _.rows }.reduce { (l,r) =>

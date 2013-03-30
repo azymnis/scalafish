@@ -8,7 +8,7 @@ import Syntax._
 
 object MatrixProperties extends Properties("Matrix") {
 
-  val FNORM_EPS = 1e-7
+  val FNORM_EPS = 1e-5
 
   def denseRandGen(rows: Int, cols: Int): Gen[Matrix] =
     Gen(_ => Some(DenseMatrix.rand(rows, cols)))
@@ -179,5 +179,40 @@ object MatrixProperties extends Properties("Matrix") {
   property("Scalars work 10x10") = scalarLaws(10, 10)
   property("Scalars work 10x1") = scalarLaws(10, 1)
   property("Scalars work 1x1") = scalarLaws(1, 1)
+
+  // Norm laws:
+  property("FrobNormLaws for constant DenseMatrix") =
+    forAll { (rowsBig: Int, colsBig: Int) =>
+      // Don't generate too large of a float:
+      val constant = (10.0 * scala.math.random).toFloat
+      val rows = (rowsBig % 500) + 501 // Make sure we are between 1 and 1000
+      val cols = (colsBig % 500) + 501
+      val sz = rows * cols
+      val mat = DenseMatrix.zeros(rows, cols)
+      mat := constant
+      val diff = scala.math.abs(Matrix.frobNorm2(mat)/sz - (constant * constant))
+      diff < FNORM_EPS
+    }
+
+  property("FrobNormLaws for constant SparseMatrix") =
+    forAll { (nonZeros: List[(Int,Int)]) =>
+      def pos(x: Int) =
+        if (x >= 0) x
+        else if (x == Int.MinValue) Int.MaxValue // -min == min
+        else -x
+      val nonEmpty = ((0,0) :: (nonZeros.map { case (r,c) => (pos(r), pos(c)) })).distinct
+
+      val rows = nonEmpty.view.map { _._1 }.max + 1
+      val cols = nonEmpty.view.map { _._2 }.max + 1
+
+      // Don't generate too large of a float:
+      val constant = (10.0 * scala.math.random).toFloat
+      val sz = nonEmpty.size
+      val mat = SparseMatrix.zeros(rows, cols)
+      nonEmpty.foreach { case (r,c) => mat.update(r, c, constant) }
+
+      val diff = scala.math.abs(Matrix.frobNorm2(mat)/sz - (constant * constant))
+      diff < FNORM_EPS
+    }
 
 }
