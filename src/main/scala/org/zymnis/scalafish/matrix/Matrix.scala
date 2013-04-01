@@ -21,12 +21,32 @@ trait Matrix extends Shaped { self =>
     self
   }
 
+  // Returns a view with min inclusive, but max exclusive bounds
   def blockView(rowMin: Int, colMin: Int, rowMax: Int, colMax: Int): Matrix = new Matrix {
     def rows = rowMax - rowMin
     def cols = colMax - colMin
     def indexer = Indexer.shifted(self.indexer, rowMin, colMin)
     def apply(row: Int, col: Int) = self.apply(row + rowMin, col + colMin)
     def update(row: Int, col: Int, f: Float) = self.update(row + rowMin, col + colMin, f)
+  }
+
+  def rowSlice(numSlices: Int): IndexedSeq[Matrix] = {
+    require(numSlices > 0, "numSlices must be positive")
+    val rowsPerSlice = rows / numSlices
+    (0 until numSlices).flatMap { s =>
+      val rowStart = rowsPerSlice * s
+      val rowEnd = if (s == (numSlices - 1)) {
+        rows
+      } else {
+        rowsPerSlice * (s + 1)
+      }
+
+      if (rowEnd > rowStart) {
+        Some(self.blockView(rowStart, 0, rowEnd, cols))
+      } else {
+        None
+      }
+    }
   }
 
   // Transpose view (DOES NOT COPY)

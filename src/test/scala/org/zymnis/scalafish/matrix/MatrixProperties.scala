@@ -290,4 +290,28 @@ object MatrixProperties extends Properties("Matrix") {
 
   property("Transpose product is block equivalent 10x10") = transposeProductLaw(10)
   property("Transpose product is block equivalent 1x1") = transposeProductLaw(1)
+
+  def sliceProperty(size: Int, numSlices: Int)(implicit cons: Arbitrary[MatrixCons]) = {
+    val density = scala.math.random
+    val (rows, cols) = (size, size)
+    implicit val arb = Arbitrary(denseOrSparse(rows, cols, density))
+
+    val eq = Equiv[Matrix].equiv _
+
+    forAll { mat: Matrix =>
+      val zeros = DenseMatrix.zeros(rows, cols)
+      val matSlices = mat.rowSlice(numSlices)
+      val zerosSlices = zeros.rowSlice(numSlices)
+
+      matSlices.zip(zerosSlices).foreach { case (mSlice, zSlice) =>
+        zSlice := mSlice
+      }
+
+      eq(mat, zeros)
+    }
+  }
+
+  property("Set by slice is equivalent to regular set on 10x10, 3 slices") = sliceProperty(10, 3)
+  property("Set by slice is equivalent to regular set on 8x8, 4 slices") = sliceProperty(8, 4)
+  property("Set by slice is equivalent to regular set on 1x1, 3 slices") = sliceProperty(1, 3)
 }
