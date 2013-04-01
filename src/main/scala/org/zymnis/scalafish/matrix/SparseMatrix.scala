@@ -5,7 +5,7 @@ import it.unimi.dsi.fastutil.longs.{Long2FloatOpenHashMap => Long2FloatMap}
 class SparseMatrix private (override val rows: Int,
     override val cols: Int,
     override val indexer: Indexer,
-    hashMap: Long2FloatMap) extends Matrix {
+    hashMap: Long2FloatMap) extends Matrix { self =>
 
   hashMap.defaultReturnValue(0.0f)
 
@@ -13,13 +13,34 @@ class SparseMatrix private (override val rows: Int,
     val idx = indexer.rowCol(row, col)
     hashMap.containsKey(idx)
   }
-  def apply(idx: Long): Float = hashMap.get(idx)
-  def apply(row: Int, col: Int) = {
-    val idx = indexer.rowCol(row, col)
-    hashMap.get(idx)
+  override def apply(idx: Long): Float = hashMap.get(idx)
+
+  // Returns a view with min inclusive, but max exclusive bounds
+  override def blockView(rowMin: Int, colMin: Int, rowMax: Int, colMax: Int): Matrix = {
+    val thisRows = rowMax - rowMin
+    val thisCols = colMax - colMin
+    val thisSize = thisRows.toLong * thisCols.toLong
+    if (thisSize < hashMap.size) {
+      //Better off doing the dense version:
+      super.blockView(rowMin, colMin, rowMax, colMax)
+    }
+    else new Matrix {
+      val indexer = Indexer.shifted(self.indexer, rowMin, colMin)
+      override def rows = thisRows
+      override def cols = thisCols
+      override def apply(idx: Long) = self.apply(idx)
+      override def update(idx: Long, f: Float) = self.update(idx, f)
+      override def denseIndices = self.denseIndices.filter(
+        new LongPredicate { def apply(l: Long) = {
+          val r = indexer.row(l)
+          val c = indexer.col(l)
+          (0 <= r && r < rows) && (0 <= c && c < cols)
+        }
+      })
+    }
   }
 
-  def update(idx: Long, f: Float) {
+  override def update(idx: Long, f: Float) {
     if( f != 0.0 ) {
       hashMap.put(idx, f)
     }
@@ -28,12 +49,12 @@ class SparseMatrix private (override val rows: Int,
     }
   }
 
-  def update(row: Int, col: Int, f: Float) {
+  override def update(row: Int, col: Int, f: Float) {
     val idx = indexer.rowCol(row, col)
     update(idx, f)
   }
 
-  def denseIndices: LongIterator = new LongIterator {
+  override def denseIndices: LongIterator = new LongIterator {
     val lit = hashMap.keySet.iterator
     def hasNext = lit.hasNext
     def next = lit.nextLong

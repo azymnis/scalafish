@@ -2,6 +2,8 @@ package org.zymnis.scalafish.matrix
 
 import scala.math.Equiv
 
+import scala.annotation.tailrec
+
 /** Addresses the specific needs we have for matrices
  * Specifically optimized for avoiding allocations, and the (Int,Int) => Float case
  * And mutability to minimize data copying
@@ -12,9 +14,27 @@ trait Matrix extends Shaped { self =>
   def size: Long = rows.toLong * cols.toLong
 
   def indexer: Indexer
-  def apply(row: Int, col: Int): Float
+  def apply(rowcol: Long): Float = {
+    val row = indexer.row(rowcol)
+    val col = indexer.col(rowcol)
+    apply(row, col)
+  }
 
-  def update(row: Int, col: Int, f: Float): Unit
+  def apply(row: Int, col: Int): Float = {
+    val idx = indexer.rowCol(row, col)
+    apply(idx)
+  }
+
+  def update(row: Int, col: Int, f: Float): Unit = {
+    val idx = indexer.rowCol(row, col)
+    update(idx, f)
+  }
+
+  def update(rowcol: Long, f: Float): Unit = {
+    val row = indexer.row(rowcol)
+    val col = indexer.col(rowcol)
+    update(row, col, f)
+  }
 
   def :=(updater: MatrixUpdater): this.type = {
     updater.update(self)
@@ -25,10 +45,31 @@ trait Matrix extends Shaped { self =>
   def blockView(rowMin: Int, colMin: Int, rowMax: Int, colMax: Int): Matrix = new Matrix {
     def rows = rowMax - rowMin
     def cols = colMax - colMin
-    def indexer = Indexer.shifted(self.indexer, rowMin, colMin)
-    def apply(row: Int, col: Int) = self.apply(row + rowMin, col + colMin)
-    def update(row: Int, col: Int, f: Float) = self.update(row + rowMin, col + colMin, f)
+    val indexer = Indexer.shifted(self.indexer, rowMin, colMin)
+    override def apply(row: Int, col: Int) = self.apply(row + rowMin, col + colMin)
+    override def update(row: Int, col: Int, f: Float) = self.update(row + rowMin, col + colMin, f)
   }
+
+  def allIndices: LongIterator = new LongIterator {
+    var rowIdx = 0
+    var colIdx = -1
+    def hasNext: Boolean = {
+      colIdx += 1
+      if (colIdx == cols) { colIdx = 0; rowIdx += 1 }
+      if (rowIdx == rows ) {
+        // Done
+        false
+      }
+      else {
+        true
+      }
+    }
+    def next = self.indexer.rowCol(rowIdx, colIdx)
+  }
+
+  // By default, it does this in the dense way: look at all row/cols
+  def denseIndices: LongIterator =
+    allIndices.filter(new LongPredicate { def apply(l: Long) = self(l) != 0.0f })
 
   def rowSlice(numSlices: Int): IndexedSeq[Matrix] = {
     require(numSlices > 0, "numSlices must be positive")
@@ -57,8 +98,8 @@ trait Matrix extends Shaped { self =>
     def rows = self.cols
     def cols = self.rows
     def indexer = self.indexer.transpose
-    def apply(row: Int, col: Int) = self.apply(col, row)
-    def update(row: Int, col: Int, f: Float) = self.update(col, row, f)
+    override def apply(row: Int, col: Int) = self.apply(col, row)
+    override def update(row: Int, col: Int, f: Float) = self.update(col, row, f)
     // Transpose of a transpose is identity:
     override def t = self
   }
