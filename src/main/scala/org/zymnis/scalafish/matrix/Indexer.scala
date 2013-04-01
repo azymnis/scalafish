@@ -27,6 +27,11 @@ object Indexer {
     def col(rowcol: Long) = (rowcol % colsLong).toInt
   }
   def colMajor(rows: Int): Indexer = rowMajor(rows).transpose
+  def shifted(indexer: Indexer, rows: Int, cols: Int) = new Indexer {
+    def rowCol(row: Int, col: Int) = indexer.rowCol(row + rows, col + cols)
+    def row(rowcol: Long) = indexer.row(rowcol) - rows
+    def col(rowcol: Long) = indexer.col(rowcol) - cols
+  }
 }
 
 // Used to iterator over indexed (row, col) pairs

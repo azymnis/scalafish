@@ -251,4 +251,43 @@ object MatrixProperties extends Properties("Matrix") {
   property("C -= A*B is the same as C = C - (A*B)") = incrementProductLaw(2,30,false)
   property("C -= A*B is the same as C = C - (A*B)") = incrementProductLaw(20,3,false)
   property("C -= A*B is the same as C = C - (A*B)") = incrementProductLaw(1,1,false)
+
+  def transposeProductLaw(size: Int)(implicit cons: Arbitrary[MatrixCons]) = {
+    val density = scala.math.random
+    val (rows, cols) = (size, size)
+    implicit val arb = Arbitrary(denseOrSparse(rows * 2, cols * 2, density))
+
+    val eq = Equiv[Matrix].equiv _
+
+    forAll { mat: Matrix =>
+      def fourSplit(m: Matrix) = {
+        val m1 = m.blockView(0, 0, rows, cols)
+        val m2 = m.blockView(0, cols, rows, 2 * cols)
+        val m3 = m.blockView(rows, 0, 2 * rows, cols)
+        val m4 = m.blockView(rows, cols, 2 * rows, 2 * cols)
+        (m1, m2, m3, m4)
+      }
+
+      val res1 = DenseMatrix.zeros(2 * rows, 2 * rows)
+      val res2 = DenseMatrix.zeros(2 * rows, 2 * rows)
+
+      res1 := mat * mat.t
+
+      val (a, b, c, d) = fourSplit(mat)
+      val (a2, b2, c2, d2) = fourSplit(res2)
+      a2 := a * a.t
+      a2 += b * b.t
+      b2 := a * c.t
+      b2 += b * d.t
+      c2 := c * a.t
+      c2 += d * b.t
+      d2 := c * c.t
+      d2 += d * d.t
+
+      eq(res1, res2)
+    }
+  }
+
+  property("Transpose product is block equivalent 10x10") = transposeProductLaw(10)
+  property("Transpose product is block equivalent 1x1") = transposeProductLaw(1)
 }

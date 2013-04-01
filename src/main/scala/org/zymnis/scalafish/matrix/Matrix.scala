@@ -21,6 +21,14 @@ trait Matrix extends Shaped { self =>
     self
   }
 
+  def blockView(rowMin: Int, colMin: Int, rowMax: Int, colMax: Int): Matrix = new Matrix {
+    def rows = rowMax - rowMin
+    def cols = colMax - colMin
+    def indexer = Indexer.shifted(self.indexer, rowMin, colMin)
+    def apply(row: Int, col: Int) = self.apply(row + rowMin, col + colMin)
+    def update(row: Int, col: Int, f: Float) = self.update(row + rowMin, col + colMin, f)
+  }
+
   // Transpose view (DOES NOT COPY)
   def t: Matrix = new Matrix {
     def rows = self.cols
