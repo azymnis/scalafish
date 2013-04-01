@@ -171,8 +171,8 @@ case class ProductUpdater(m1: Matrix, m2: Matrix, coeff: Double = 0.0, pcoeff: D
     def cols = m2.cols
     // TODO perhaps optimize this for cache locality, assume m1 is rowMajor for now
     def update(result: Matrix) = {
-      require(result.rows == m1.rows, "Rows do not match")
-      require(result.cols == m2.cols, "Cols do not match")
+      require(result.rows == m1.rows, "Rows do not match: %d, %d".format(result.rows, m1.rows))
+      require(result.cols == m2.cols, "Cols do not match: %d, %d".format(result.cols, m2.cols))
       require(m1.cols == m2.rows, "Inner dimension mismatch")
       // R_{ij} = \sum_k A_ik B_kj
       var idxI = 0

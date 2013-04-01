@@ -14,18 +14,17 @@ object DistributedMatrixFactorizer extends App {
   import Syntax._
 
   val rows = 10000
-  val cols = 2000
+  val cols = 1000
   val realRank = 20
-  val factorRank = 30
+  val factorRank = realRank + 4
   val slices = 10
   val p = 0.1
-  val noise = 0.001
   val mu = 1e-3
-  val alpha = 1e-2
+  val alpha = 1e-3
 
   val real = DenseMatrix.randLowRank(rows, cols, realRank)
   val dataMat = SparseMatrix.sample(p, real)
-  val data = dataMat.rowSlice(slices).map { _.asInstanceOf[SparseMatrix] }
+  val data = dataMat.rowSlice(slices)
 
   val system = ActorSystem("FactorizerSystem")
   val master = system.actorOf(Props(new Master(cols, factorRank, slices, mu, alpha)), name = "master")
@@ -35,12 +34,14 @@ object DistributedMatrixFactorizer extends App {
 // Messages are defined below
 
 sealed trait FactorizerMessage
-case class UpdateWorkerData(data: SparseMatrix) extends FactorizerMessage
+case class UpdateWorkerData(data: Matrix) extends FactorizerMessage
 case class UpdateWorkerR(newR: IndexedSeq[Matrix]) extends FactorizerMessage
-case class StartMaster(data: IndexedSeq[SparseMatrix]) extends FactorizerMessage
+case class StartMaster(data: IndexedSeq[Matrix]) extends FactorizerMessage
 case object DoUpdate extends FactorizerMessage
 case class UpdateResponse(rSlice: Matrix, rIndex: Int, objSlice: Double) extends FactorizerMessage
 case object DataUpdated extends FactorizerMessage
+case object GetCurrentL extends FactorizerMessage
+case class CurrentL(myL: Matrix) extends FactorizerMessage
 
 // Actors start here
 
@@ -65,44 +66,51 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double) exten
   def receive = {
     case StartMaster(data) => {
       println("initializing workers")
-      updateWorkerData(data)
-      updateWorkerR
-
-      (1 to 100).foreach { i =>
-        val obj = doWorkerUpdates
-        println("Master iteration: %s, curObj: %4.3f".format(i, obj))
+      updateWorkerData(data).flatMap { _ =>
         updateWorkerR
+      }.flatMap { _ =>
+        steps(100) { i =>
+          doWorkerUpdates.flatMap { obj =>
+            println("Master iteration: %s, curObj: %4.3f".format(100 - i, obj))
+            updateWorkerR
+          }
+        }
+      }.foreach { _ =>
+        context.stop(self)
+        context.system.shutdown()
       }
-
-      context.stop(self)
-      context.system.shutdown()
     }
   }
 
-  def updateWorkerData(data: Iterable[SparseMatrix]) {
+  def steps(numSteps: Int)(f: (Int) => Future[Unit]): Future[Unit] = {
+    if(numSteps <= 0) Future(())
+    else {
+      f(numSteps).flatMap { _ => steps(numSteps - 1)(f) }
+    }
+  }
+
+  def updateWorkerData(data: Iterable[Matrix]): Future[Unit] = {
     val futures = data.zip(actors).map{
       case(mat, worker) => worker ? UpdateWorkerData(mat)
     }
-    val fList = Future.sequence(futures)
-    Await.ready(fList, timeToWait)
+    Future.sequence(futures).map { _ => () }
   }
 
-  def updateWorkerR {
+  def updateWorkerR: Future[Unit] = {
     val futures = actors.map{
       worker => worker ? UpdateWorkerR(R)
     }
-    val fList = Future.sequence(futures)
-    Await.ready(fList, timeToWait)
+    Future.sequence(futures).map { _ => () }
   }
 
-  def doWorkerUpdates: Double = {
+  def doWorkerUpdates: Future[Double] = {
     val futures = actors.map{ worker =>
       (worker ? DoUpdate).asInstanceOf[Future[UpdateResponse]].map { res =>
         R(res.rIndex) := res.rSlice
         res.objSlice
       }
     }
-    Await.result(Future.reduce(futures)(_ + _), timeToWait)
+    Future.reduce(futures)(_ + _)
   }
 
 }
@@ -112,8 +120,8 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
 
   var R: IndexedSeq[DenseMatrix] = _
   var L: DenseMatrix = _
-  var data: IndexedSeq[SparseMatrix] = _
-  var currentDelta: IndexedSeq[SparseMatrix] = _
+  var data: IndexedSeq[Matrix] = _
+  var currentDelta: Matrix = _
 
   var iteration = 0
 
@@ -121,14 +129,14 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
 
   override def preStart() = {
     R = Vector.fill(slices)(DenseMatrix.zeros(sliceSize, rank))
-    currentDelta = Vector.fill(slices)(SparseMatrix.zeros(sliceSize, rank))
   }
 
   def receive = {
     case UpdateWorkerData(mat) => {
       L = DenseMatrix.rand(mat.rows, rank)
+      currentDelta = SparseMatrix.zeros(mat.rows, sliceSize)
 
-      data = mat.colSlice(slices).map { _.asInstanceOf[SparseMatrix] }
+      data = mat.colSlice(slices)
 
       sender ! DataUpdated
     }
@@ -140,23 +148,23 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
       val updateIndex = (iteration + workerIndex) % slices
       val Rn = R(updateIndex)
       val dataN = data(updateIndex)
-      val currentDeltaN = currentDelta(updateIndex)
       def delta = new ScalafishUpdater(L, Rn, dataN, rank)
       val currentAlpha = (alpha / (1 + iteration)).toFloat
 
       L *= (1.0f - mu.toFloat * currentAlpha)
-      L -= currentDeltaN * Rn
+      L -= currentDelta * Rn
 
-      currentDeltaN := delta
-      currentDeltaN *= currentAlpha
+      currentDelta := delta
+      currentDelta *= currentAlpha
 
       Rn *= (1.0f - mu.toFloat * currentAlpha)
-      Rn -= currentDeltaN.t * L
+      Rn -= currentDelta.t * L
 
       val curObj =
-        0.5 * (Matrix.frobNorm2(currentDeltaN) + mu.toFloat * (Matrix.frobNorm2(L) + Matrix.frobNorm2(Rn)))
+        0.5 * (Matrix.frobNorm2(currentDelta) + mu.toFloat * (Matrix.frobNorm2(L) + Matrix.frobNorm2(Rn)))
       iteration += 1
       sender ! UpdateResponse(Rn, updateIndex, curObj)
     }
+    case GetCurrentL => sender ! CurrentL(L)
   }
 }

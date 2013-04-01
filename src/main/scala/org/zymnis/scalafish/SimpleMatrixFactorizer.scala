@@ -12,7 +12,7 @@ object SimpleMatrixFactorizer extends App {
     val real = DenseMatrix.randLowRank(rows, cols, rank)
     val data = SparseMatrix.sample(0.1, real)
     val approx = DenseMatrix.zeros(rows, cols) // probably don't materialize this in the real deal
-    val mf = new SimpleMatrixFactorizer(data, 4, 1e-3f, 1e-4f)
+    val mf = new SimpleMatrixFactorizer(data, rank + 4, 1e-3f, 1e-4f)
     (0 to steps).foreach{ i =>
       val obj = mf.currentObjective
       println("iteration: " + i + ", obj: " + obj)
