@@ -59,6 +59,19 @@ object MatrixUpdater {
   // Macros would be huge here:
   def scale(scalar: Float): MatrixUpdater = new MatrixUpdater {
     def update(m: Matrix) {
+      m match {
+        case dm: DenseMatrix => denseUpdate(dm)
+        case sm: SparseMatrix => sparseUpdate(sm)
+      }
+    }
+    def sparseUpdate(s: SparseMatrix) {
+      val iter = s.denseIndices
+      while(iter.hasNext) {
+        val idx = iter.next
+        s.update(idx, s(idx) * scalar)
+      }
+    }
+    def denseUpdate(m: DenseMatrix) {
       var rowIdx = 0
       while(rowIdx < m.rows) {
         var colIdx = 0
