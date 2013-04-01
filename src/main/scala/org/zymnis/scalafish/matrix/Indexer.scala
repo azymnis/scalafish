@@ -1,5 +1,7 @@
 package org.zymnis.scalafish.matrix
 
+import scala.annotation.tailrec
+
 // Index a matrix by a Long
 trait Indexer { self =>
   def rowCol(row: Int, col: Int): Long
@@ -34,8 +36,41 @@ object Indexer {
   }
 }
 
+trait LongPredicate {
+  def apply(l: Long): Boolean
+}
+
 // Used to iterator over indexed (row, col) pairs
 trait LongIterator { self =>
   def hasNext: Boolean
   def next: Long
+  // Some combinators:
+  def filter(lp: LongPredicate): LongIterator = new LongIterator {
+    var advanced = false
+    var nextLong: Long = 0L
+
+    @tailrec
+    final def advance: Boolean =
+      if(self.hasNext) {
+        nextLong = self.next
+        if (lp(nextLong)) {
+          advanced = true
+          true
+        }
+        else
+          advance
+      }
+      else {
+        false
+      }
+
+    override def hasNext = {
+      if (!advanced) { advanced = advance }
+      advanced
+    }
+    override def next = {
+      advanced = false
+      nextLong
+    }
+  }
 }

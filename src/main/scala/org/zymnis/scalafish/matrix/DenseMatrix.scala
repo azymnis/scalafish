@@ -57,7 +57,7 @@ class DenseMatrix private (override val rows: Int, override val cols: Int, overr
     this
   }
 
-  def update(row: Int, col: Int, f: Float): Unit = {
+  override def update(row: Int, col: Int, f: Float): Unit = {
     val block = row / rows_per_block
     val blockrow = row % rows_per_block
     data(block).putFloat(indexer.rowCol(blockrow, col).toInt * BYTES_PER_FLOAT, f)
