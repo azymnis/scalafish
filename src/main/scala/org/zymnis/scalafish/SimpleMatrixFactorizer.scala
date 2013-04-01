@@ -47,25 +47,7 @@ class SimpleMatrixFactorizer(data: SparseMatrix, rank: Int, mu: Float, alpha: Fl
   def computeObjective: Double =
     0.5 * (Matrix.frobNorm2(currentDelta) + mu * (Matrix.frobNorm2(L) + Matrix.frobNorm2(R)))
 
-  def delta: MatrixUpdater = new MatrixUpdater {
-    def update(oldDelta: Matrix) = {
-      val iter = data.denseIndices
-      while(iter.hasNext) {
-        val idx = iter.next
-        val row = data.indexer.row(idx)
-        val col = data.indexer.col(idx)
-        // going to set: oldDelta(row, col) = L(row,_) * R(col,_) - data(row, col)
-        var rankIdx = 0
-        var sum = 0.0
-        while(rankIdx < rank) {
-          sum += L(row, rankIdx) * R(col, rankIdx)
-          rankIdx += 1
-        }
-        val newV = (sum - data(idx)).toFloat
-        oldDelta.update(row, col, newV)
-      }
-    }
-  }
+  def delta: MatrixUpdater = new ScalafishUpdater(L, R, data, rank)
 
   def update {
     /*

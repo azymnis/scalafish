@@ -49,6 +49,9 @@ trait Matrix extends Shaped { self =>
     }
   }
 
+  def colSlice(numSlices: Int): IndexedSeq[Matrix] =
+    self.t.rowSlice(numSlices).map { _.t }
+
   // Transpose view (DOES NOT COPY)
   def t: Matrix = new Matrix {
     def rows = self.cols

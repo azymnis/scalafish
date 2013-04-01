@@ -1,7 +1,5 @@
 package org.zymnis.scalafish
 
-import breeze.linalg.{DenseMatrix, CSCMatrix}
-
 import akka.actor._
 import akka.dispatch.{Await, ExecutionContext, Future}
 import akka.pattern.ask
@@ -10,7 +8,11 @@ import akka.util.duration._
 
 import scala.util.Random
 
+import org.zymnis.scalafish.matrix._
+
 object DistributedMatrixFactorizer extends App {
+  import Syntax._
+
   val rows = 10000
   val cols = 2000
   val realRank = 20
@@ -21,7 +23,9 @@ object DistributedMatrixFactorizer extends App {
   val mu = 1e-3
   val alpha = 1e-2
 
-  val (real, data) = MatrixUtil.randSparseSliced(rows, cols, realRank, p, noise, slices)
+  val real = DenseMatrix.randLowRank(rows, cols, realRank)
+  val dataMat = SparseMatrix.sample(p, real)
+  val data = dataMat.rowSlice(slices).map { _.asInstanceOf[SparseMatrix] }
 
   val system = ActorSystem("FactorizerSystem")
   val master = system.actorOf(Props(new Master(cols, factorRank, slices, mu, alpha)), name = "master")
@@ -31,22 +35,24 @@ object DistributedMatrixFactorizer extends App {
 // Messages are defined below
 
 sealed trait FactorizerMessage
-case class UpdateWorkerData(data: CSCMatrix[Double]) extends FactorizerMessage
-case class UpdateWorkerR(newR: Iterable[DenseMatrix[Double]]) extends FactorizerMessage
-case class StartMaster(data: Iterable[CSCMatrix[Double]]) extends FactorizerMessage
+case class UpdateWorkerData(data: SparseMatrix) extends FactorizerMessage
+case class UpdateWorkerR(newR: IndexedSeq[Matrix]) extends FactorizerMessage
+case class StartMaster(data: IndexedSeq[SparseMatrix]) extends FactorizerMessage
 case object DoUpdate extends FactorizerMessage
-case class UpdateResponse(rSlice: DenseMatrix[Double], rIndex: Int, objSlice: Double) extends FactorizerMessage
+case class UpdateResponse(rSlice: Matrix, rIndex: Int, objSlice: Double) extends FactorizerMessage
 case object DataUpdated extends FactorizerMessage
 
 // Actors start here
 
 class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double) extends Actor {
+  import Syntax._
+
   val timeToWait = 5.seconds
 
   implicit val timeout = Timeout(timeToWait)
   implicit val ec = ExecutionContext.defaultExecutionContext(context.system)
 
-  var R: Vector[DenseMatrix[Double]] = _
+  var R: Vector[Matrix] = _
   val actors = (0 until slices).map{ ind =>
     context.actorOf(Props(new Worker(ind, cols, rank, slices, mu, alpha)), name = "worker_" + ind)
   }
@@ -73,7 +79,7 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double) exten
     }
   }
 
-  def updateWorkerData(data: Iterable[CSCMatrix[Double]]) {
+  def updateWorkerData(data: Iterable[SparseMatrix]) {
     val futures = data.zip(actors).map{
       case(mat, worker) => worker ? UpdateWorkerData(mat)
     }
@@ -102,31 +108,27 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double) exten
 }
 
 class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double) extends Actor {
-  var R: Vector[DenseMatrix[Double]] = _
-  var L: DenseMatrix[Double] = _
-  var data: Vector[CSCMatrix[Double]] = _
-  var pat: Vector[DenseMatrix[Double]] = _
+  import Syntax._
+
+  var R: IndexedSeq[DenseMatrix] = _
+  var L: DenseMatrix = _
+  var data: IndexedSeq[SparseMatrix] = _
+  var currentDelta: IndexedSeq[SparseMatrix] = _
+
   var iteration = 0
 
   val sliceSize = cols / slices
 
   override def preStart() = {
-    R = Vector.fill(slices)(DenseMatrix.zeros[Double](sliceSize, rank))
+    R = Vector.fill(slices)(DenseMatrix.zeros(sliceSize, rank))
+    currentDelta = Vector.fill(slices)(SparseMatrix.zeros(sliceSize, rank))
   }
 
   def receive = {
     case UpdateWorkerData(mat) => {
       L = DenseMatrix.rand(mat.rows, rank)
 
-      data = Vector.fill(slices)(CSCMatrix.zeros[Double](mat.rows, sliceSize))
-      pat = Vector.fill(slices)(DenseMatrix.zeros[Double](mat.rows, sliceSize))
-
-      mat.activeKeysIterator.foreach{ case(r, c) =>
-        val itIndex = c / sliceSize
-        val colInd = c % sliceSize
-        data(itIndex)(r, colInd) = mat(r, c)
-        pat(itIndex)(r, colInd) = 1.0
-      }
+      data = mat.colSlice(slices).map { _.asInstanceOf[SparseMatrix] }
 
       sender ! DataUpdated
     }
@@ -138,13 +140,21 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
       val updateIndex = (iteration + workerIndex) % slices
       val Rn = R(updateIndex)
       val dataN = data(updateIndex)
-      val patN = pat(updateIndex)
-      def delta = patN :* (L * Rn.t - dataN)
-      val currentAlpha = alpha / (1 + iteration)
-      L := L - (L * mu + delta * Rn) * currentAlpha
-      Rn := Rn - (Rn * mu + delta.t * L) * currentAlpha
+      val currentDeltaN = currentDelta(updateIndex)
+      def delta = new ScalafishUpdater(L, Rn, dataN, rank)
+      val currentAlpha = (alpha / (1 + iteration)).toFloat
+
+      L *= (1.0f - mu.toFloat * currentAlpha)
+      L -= currentDeltaN * Rn
+
+      currentDeltaN := delta
+      currentDeltaN *= currentAlpha
+
+      Rn *= (1.0f - mu.toFloat * currentAlpha)
+      Rn -= currentDeltaN.t * L
+
       val curObj =
-        0.5 * (MatrixUtil.frobNorm(delta) + mu * (MatrixUtil.frobNorm(L) + MatrixUtil.frobNorm(Rn)))
+        0.5 * (Matrix.frobNorm2(currentDeltaN) + mu.toFloat * (Matrix.frobNorm2(L) + Matrix.frobNorm2(Rn)))
       iteration += 1
       sender ! UpdateResponse(Rn, updateIndex, curObj)
     }
