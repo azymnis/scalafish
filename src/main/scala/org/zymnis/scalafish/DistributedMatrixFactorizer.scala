@@ -151,7 +151,7 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
   var R: IndexedSeq[DenseMatrix] = _
   var L: DenseMatrix = _
   var data: IndexedSeq[Matrix] = _
-  var currentDelta: Matrix = _
+  var currentDelta: IndexedSeq[Matrix] = _
   var iteration = 0
 
   val sliceSize = cols / slices
@@ -164,10 +164,8 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
     case UpdateWorkerData(mat) => {
       L = DenseMatrix.rand(mat.rows, rank)
       // TODO keep a bunch of these and overwrite the one with the pattern of data(N)
-      currentDelta = DenseMatrix.zeros(mat.rows, sliceSize)
-
+      currentDelta = Vector.fill(slices)(SparseMatrix.zeros(mat.rows, sliceSize))
       data = mat.colSlice(slices)
-
       sender ! DataUpdated
     }
     case UpdateWorkerR(mats) => {
@@ -178,22 +176,21 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
       val updateIndex = (iteration + workerIndex) % slices
       val Rn = R(updateIndex)
       val dataN = data(updateIndex)
+      val deltaN = currentDelta(updateIndex)
       def delta = new ScalafishUpdater(L, Rn, dataN, rank)
       val currentAlpha = (alpha / (1 + iteration)).toFloat
 
-      currentDelta := 0.0f
-      currentDelta := delta
-      currentDelta *= currentAlpha
+      deltaN := delta
+      deltaN *= currentAlpha
 
       L *= (1.0f - mu.toFloat * currentAlpha)
-      L -= currentDelta * Rn
+      L -= deltaN * Rn
 
-      currentDelta := 0.0f
-      currentDelta := delta
-      currentDelta *= currentAlpha
+      deltaN := delta
+      deltaN *= currentAlpha
 
       Rn *= (1.0f - mu.toFloat * currentAlpha)
-      Rn -= currentDelta.t * L
+      Rn -= deltaN.t * L
 
       val curObj = 0.5 * (0 + mu.toFloat * (Matrix.frobNorm2(L) + Matrix.frobNorm2(Rn)))
       iteration += 1
