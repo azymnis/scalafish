@@ -16,12 +16,12 @@ object DistributedMatrixFactorizer extends App {
   val rows = 10000
   val cols = 1000
   val realRank = 4
-  val factorRank = realRank + 4
+  val factorRank = realRank
   val slices = 5
   val p = 0.1
-  val mu = 1e-3
-  val alpha = 1e-1
-  val iters = 10
+  val mu = 1e-4
+  val alpha = 1e-2
+  val iters = 300
 
   val real = DenseMatrix.randLowRank(rows, cols, realRank)
   val dataMat = SparseMatrix.sample(p, real)
@@ -82,26 +82,10 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double, iters
       }.flatMap { _ => lookupL }
       .foreach { lSeq =>
         val dataFrobNorm = data.map { m => Matrix.frobNorm2(m) }.sum
-
-        val approxBlocks = for {
-          l <- lSeq
-          r <- R
-        } yield (l, r)
-
-        val dataBlocks = for {
-          dataRow <- data
-          dataBlock <- dataRow.colSlice(slices)
-        } yield dataBlock
-
-        val approxFrobNorm = approxBlocks
-          .view
-          .zip(dataBlocks)
-          .map { case ((l, r), dataBlock) =>
-            dataBlock -= l*r.t
-            Matrix.frobNorm2(dataBlock)
-          }
-          .sum
-
+        val rows = data.map { _.rows }.sum
+        val out = SparseMatrix.zeros(rows, cols)
+        out := new ScalafishUpdater(Matrix.vStack(lSeq), Matrix.vStack(R), Matrix.vStack(data), rank)
+        val approxFrobNorm = out.frobNorm2
         println("relerr: %.3f".format(math.sqrt(approxFrobNorm / dataFrobNorm)))
         context.stop(self)
         context.system.shutdown()
@@ -197,15 +181,15 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
       Rn *= (1.0f - mu.toFloat * currentAlpha)
       Rn -= currentDelta.t * L
 
-      val dObj = R.view
-        .zip(data)
-        .map { case (rn, dn) =>
-          currentDelta2 := new ScalafishUpdater(L, rn, dn, rank)
-          Matrix.frobNorm2(currentDelta2)
-        }
-        .sum
+      // val dObj = R.view
+      //   .zip(data)
+      //   .map { case (rn, dn) =>
+      //     currentDelta2 := new ScalafishUpdater(L, rn, dn, rank)
+      //     Matrix.frobNorm2(currentDelta2)
+      //   }
+      //   .sum
 
-      val curObj = 0.5 * (dObj + mu.toFloat * (Matrix.frobNorm2(L) + Matrix.frobNorm2(Rn)))
+      val curObj = 0.5 * (0 + mu.toFloat * (Matrix.frobNorm2(L) + Matrix.frobNorm2(Rn)))
       iteration += 1
       sender ! UpdateResponse(Rn, updateIndex, curObj)
     }
