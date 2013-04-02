@@ -71,6 +71,11 @@ object SparseMatrix {
   def zeros(rows: Int, cols: Int): SparseMatrix =
     new SparseMatrix(rows, cols,  Indexer.rowMajor(cols), new Long2FloatMap)
 
+  def from(rows: Int, cols: Int, rep: Map[Long, Float]): SparseMatrix = {
+    // TODO
+    null
+  }
+
   def from(rows: Int, cols: Int, row: Iterable[Int], col: Iterable[Int], vs: Array[Float]): SparseMatrix = {
     val idxer = Indexer.rowMajor(cols)
     val indices = row.view.zip(col).map { case (row, col) => idxer.rowCol(row, col) }.toArray

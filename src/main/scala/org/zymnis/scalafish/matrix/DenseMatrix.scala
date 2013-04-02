@@ -77,16 +77,7 @@ object DenseMatrix {
 
   def rand(rows: Int, cols: Int)(implicit rng: java.util.Random): DenseMatrix = {
     val mat = zeros(rows, cols)
-    var rowIdx = 0
-    var colIdx = 0
-    while(colIdx < cols) {
-      rowIdx = 0
-      while(rowIdx < rows) {
-        mat.update(rowIdx, colIdx, rng.nextFloat)
-        rowIdx += 1
-      }
-      colIdx += 1
-    }
+    mat := MatrixUpdater.rand
     mat
   }
 

@@ -145,8 +145,35 @@ trait Matrix extends Shaped { self =>
   }
 }
 
+object RowMajorMatrix {
+  def zeros(rows: Int, cols: Int): RowMajorMatrix = new RowMajorMatrix(cols, Array.fill(rows * cols)(0.0f))
+}
+
+class RowMajorMatrix(override val cols: Int, val items: Array[Float]) extends Matrix {
+  assert((items.size % cols) == 0, "size not divisible by cols")
+
+  val rows = items.size / cols
+  val indexer = Indexer.rowMajor(cols)
+  override def apply(rowCol: Long): Float = items(rowCol.toInt)
+  override def update(rowCol: Long, f: Float): Unit = { items(rowCol.toInt) = f }
+}
+
 object Matrix {
   def frobNorm2(m: Matrix): Double = m.frobNorm2
+
+  // Make a matrix out of an array on the heap. Safe for small matrices that are passed over RPC
+  def rowMajor(cols: Int, items: Array[Float]): RowMajorMatrix = new RowMajorMatrix(cols, items)
+
+  // TODO: use (Array[Long], Array[Float])
+  def toMap(m: Matrix): Map[Long, Float] = {
+    val iter = m.denseIndices
+    var mapV = Map.empty[Long, Float]
+    while(iter.hasNext) {
+      val idx = iter.next
+      mapV += (idx -> m(idx))
+    }
+    mapV
+  }
 
   implicit val defaultEquiv = equiv(1e-6)
   // TODO this doesn't need to allocate

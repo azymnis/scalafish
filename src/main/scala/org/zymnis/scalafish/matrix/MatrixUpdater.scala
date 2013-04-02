@@ -56,6 +56,24 @@ object MatrixUpdater {
     }
   }
 
+  def rand: MatrixUpdater = new MatrixUpdater {
+    def update(m: Matrix) {
+      val cols = m.cols
+      val rows = m.rows
+      var rowIdx = 0
+      var colIdx = 0
+      val rng = new java.util.Random
+      while(colIdx < cols) {
+        rowIdx = 0
+        while(rowIdx < rows) {
+          m.update(rowIdx, colIdx, rng.nextFloat)
+          rowIdx += 1
+        }
+        colIdx += 1
+      }
+    }
+  }
+
   // Macros would be huge here:
   def scale(scalar: Float): MatrixUpdater = new MatrixUpdater {
     def update(m: Matrix) {
