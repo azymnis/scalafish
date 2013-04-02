@@ -2,7 +2,9 @@ package org.zymnis.scalafish
 
 import org.zymnis.scalafish.matrix._
 
-class ScalafishUpdater(left: Matrix, right: Matrix, data: Matrix, rank: Int) extends MatrixUpdater {
+class ScalafishUpdater(left: Matrix, right: Matrix, data: Matrix) extends MatrixUpdater {
+  require(left.cols == right.cols, "Left and right must have the same number of cols")
+  val rank = left.cols
   def update(oldDelta: Matrix) = {
     val iter = data.denseIndices
     while(iter.hasNext) {

@@ -47,7 +47,7 @@ class SimpleMatrixFactorizer(data: SparseMatrix, rank: Int, mu: Float, alpha: Fl
   def computeObjective: Double =
     0.5 * (Matrix.frobNorm2(currentDelta) + mu * (Matrix.frobNorm2(L) + Matrix.frobNorm2(R)))
 
-  def delta: MatrixUpdater = new ScalafishUpdater(L, R, data, rank)
+  def delta: MatrixUpdater = new ScalafishUpdater(L, R, data)
 
   def update {
     /*
