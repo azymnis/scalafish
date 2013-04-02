@@ -14,22 +14,22 @@ object SimpleMatrixFactorizer extends App {
     val real = DenseMatrix.randLowRank(rows, cols, rank)
     val data = SparseMatrix.sample(0.1, real)
     val approx = DenseMatrix.zeros(rows, cols) // probably don't materialize this in the real deal
-    val mf = new SimpleMatrixFactorizer(data, rank + 4, 1e-3f, 1e-3f)
+    val mf = new SimpleMatrixFactorizer(data, rank + 5, 1e-4f, 1e-2f)
     val nnz = real.nonZeros.toDouble
     (0 to steps).foreach{ i =>
       val obj = mf.currentObjective
-      println("iteration: " + i + ", obj: " + obj)
+      // println("iteration: " + i + ", obj: " + obj)
       if(i % 5 == 0) {
         approx := mf.currentGuess
         approx -= real
         val relerr = math.sqrt(Matrix.frobNorm2(approx)) / math.sqrt(nnz)
-        println("RMSE: " + relerr)
+        println("iteration: %d, RMSE: %4.3f".format(i, relerr))
       }
       mf.update
     }
   }
 
-  example(1000, 5000, 10, 40)
+  example(1000, 100, 10, 200)
 }
 
 class SimpleMatrixFactorizer(data: SparseMatrix, rank: Int, mu: Float, alpha: Float) {

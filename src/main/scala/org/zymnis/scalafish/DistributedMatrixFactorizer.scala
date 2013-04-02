@@ -16,14 +16,14 @@ object DistributedMatrixFactorizer extends App {
   implicit val rng = new java.util.Random(1)
 
   val rows = 1000
-  val cols = 5000
+  val cols = 100
   val realRank = 10
-  val factorRank = realRank + 4
-  val slices = 20
+  val factorRank = 15
+  val slices = 5
   val p = 0.1
-  val mu = 1e-3
-  val alpha = 1e-3
-  val iters = 200
+  val mu = 1e-4
+  val alpha = 5e-2
+  val iters = 1000
 
   val real = DenseMatrix.randLowRank(rows, cols, realRank)
   val dataMat = SparseMatrix.sample(p, real)
@@ -78,7 +78,7 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double, iters
       }.flatMap { _ =>
         steps(iters) { i =>
           doWorkerUpdates.flatMap { obj =>
-            println("Master iteration: %s".format(iters - i))
+            // println("Master iteration: %s".format(iters - i))
             updateWorkerR
           }.flatMap { _ =>
             if (i % 20 == 0) {
@@ -132,6 +132,7 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double, iters
   def doWorkerUpdates: Future[Double] = {
     val futures = actors.map{ worker =>
       (worker ? DoUpdate).mapTo[UpdateResponse].map { res =>
+        R(res.rIndex) := res.rSlice
         res.objSlice
       }
     }
@@ -184,7 +185,7 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
       val dataN = data(updateIndex)
       val deltaN = currentDelta(updateIndex)
       def delta = new ScalafishUpdater(L, Rn, dataN)
-      val currentAlpha = (alpha / (1 + iteration)).toFloat
+      val currentAlpha = (alpha / (iteration + 1)).toFloat
 
       deltaN := delta
       deltaN *= currentAlpha
