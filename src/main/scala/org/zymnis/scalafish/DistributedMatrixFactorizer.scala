@@ -16,12 +16,12 @@ object DistributedMatrixFactorizer extends App {
   val rows = 10000
   val cols = 1000
   val realRank = 4
-  val factorRank = realRank
+  val factorRank = realRank + 4
   val slices = 5
   val p = 0.1
   val mu = 1e-4
   val alpha = 1e-2
-  val iters = 300
+  val iters = 400
 
   val real = DenseMatrix.randLowRank(rows, cols, realRank)
   val dataMat = SparseMatrix.sample(p, real)
@@ -77,16 +77,16 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double, iters
           doWorkerUpdates.flatMap { obj =>
             println("Master iteration: %s, curObj: %4.3f".format(iters - i, obj))
             updateWorkerR
+          }.flatMap { _ =>
+            if (i % 20 == 0) {
+              printCurrentError(i)
+            } else {
+              Future(())
+            }
           }
         }
-      }.flatMap { _ => lookupL }
+      }
       .foreach { lSeq =>
-        val dataFrobNorm = data.map { m => Matrix.frobNorm2(m) }.sum
-        val rows = data.map { _.rows }.sum
-        val out = SparseMatrix.zeros(rows, cols)
-        out := new ScalafishUpdater(Matrix.vStack(lSeq), Matrix.vStack(R), Matrix.vStack(data), rank)
-        val approxFrobNorm = out.frobNorm2
-        println("relerr: %.3f".format(math.sqrt(approxFrobNorm / dataFrobNorm)))
         context.stop(self)
         context.system.shutdown()
       }
@@ -97,6 +97,17 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double, iters
     if(numSteps <= 0) Future(())
     else {
       f(numSteps).flatMap { _ => steps(numSteps - 1)(f) }
+    }
+  }
+
+  def printCurrentError(iter: Int): Future[Unit] = {
+    lookupL.map { lSeq =>
+      val dataFrobNorm = data.map { m => Matrix.frobNorm2(m) }.sum
+      val rows = data.map { _.rows }.sum
+      val out = SparseMatrix.zeros(rows, cols)
+      out := new ScalafishUpdater(Matrix.vStack(lSeq), Matrix.vStack(R), Matrix.vStack(data), rank)
+      val approxFrobNorm = out.frobNorm2
+      println("iter: %d, relerr: %.3f".format(iter, math.sqrt(approxFrobNorm / dataFrobNorm)))
     }
   }
 
