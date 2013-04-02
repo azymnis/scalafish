@@ -15,14 +15,14 @@ object DistributedMatrixFactorizer extends App {
 
   implicit val rng = new java.util.Random(1)
 
-  val rows = 10000
-  val cols = 1000
-  val realRank = 4
+  val rows = 1000
+  val cols = 5000
+  val realRank = 10
   val factorRank = realRank + 4
-  val slices = 10
+  val slices = 20
   val p = 0.1
   val mu = 1e-3
-  val alpha = 5e-2
+  val alpha = 1e-3
   val iters = 200
 
   val real = DenseMatrix.randLowRank(rows, cols, realRank)
@@ -78,7 +78,7 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double, iters
       }.flatMap { _ =>
         steps(iters) { i =>
           doWorkerUpdates.flatMap { obj =>
-            println("Master iteration: %s, curObj: %4.3f".format(iters - i, obj))
+            println("Master iteration: %s".format(iters - i))
             updateWorkerR
           }.flatMap { _ =>
             if (i % 20 == 0) {

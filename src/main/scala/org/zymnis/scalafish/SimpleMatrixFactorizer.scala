@@ -29,7 +29,7 @@ object SimpleMatrixFactorizer extends App {
     }
   }
 
-  example(10000, 1000, 4, 40)
+  example(1000, 5000, 10, 40)
 }
 
 class SimpleMatrixFactorizer(data: SparseMatrix, rank: Int, mu: Float, alpha: Float) {
