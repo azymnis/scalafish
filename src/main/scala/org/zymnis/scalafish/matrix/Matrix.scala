@@ -155,10 +155,7 @@ object Matrix {
     require(blocks.forall { _.cols == cols },
       "all blocks must have same number of columns")
     val rows = blocks.map { _.rows }.sum
-    val indexer = {
-      val blockRows = blocks.map { m => (m.indexer, m.rows) }
-      Indexer.vStack(blockRows, cols)
-    }
+    val indexer = Indexer.rowMajor(cols)
     val sizeMap = blocks
       .view
       .map { _.size }

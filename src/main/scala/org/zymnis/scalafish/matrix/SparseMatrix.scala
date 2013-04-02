@@ -25,9 +25,9 @@ class SparseMatrix private (override val rows: Int,
       super.blockView(rowMin, colMin, rowMax, colMax)
     }
     else new Matrix {
-      val indexer = Indexer.rowMajor(cols)
       override val rows = thisRows
       override val cols = thisCols
+      val indexer = Indexer.rowMajor(cols)
       override def apply(row: Int, col: Int) = self.apply(row + rowMin, col + colMin)
       override def update(row: Int, col: Int, f: Float) = self.update(row + rowMin, col + colMin, f)
       override def denseIndices = self.denseIndices.filter(

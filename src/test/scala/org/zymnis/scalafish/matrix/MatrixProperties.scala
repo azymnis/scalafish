@@ -196,11 +196,14 @@ object MatrixProperties extends Properties("Matrix") {
 
   property("FrobNormLaws for constant SparseMatrix") =
     forAll { (nonZeros: List[(Int,Int)]) =>
-      def pos(x: Int) =
+      def pos(x0: Int) = {
+        val x = x0 / 2 // make sure it isn't too close to overflow
         if (x >= 0) x
-        else if (x == Int.MinValue) Int.MaxValue // -min == min
+        else if (x <= Int.MinValue) Int.MaxValue  // -min == min
         else -x
-      val nonEmpty = ((0,0) :: (nonZeros.map { case (r,c) => (pos(r), pos(c)) })).distinct
+      }
+      val nonEmpty = ((0,0) :: (nonZeros.map { case (r,c) => (pos(r), pos(c)) }))
+        .distinct
 
       val rows = nonEmpty.view.map { _._1 }.max + 1
       val cols = nonEmpty.view.map { _._2 }.max + 1

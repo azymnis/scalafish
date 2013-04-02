@@ -23,55 +23,56 @@ trait Indexer { self =>
 
 object Indexer {
   def rowMajor(cols: Int): Indexer = new Indexer {
+    require(cols > 0, "rowMajor needs positive cols")
     val colsLong = cols.toLong
     def rowCol(row: Int, col: Int) = col.toLong + colsLong * row.toLong
     def row(rowcol: Long) = (rowcol / colsLong).toInt
     def col(rowcol: Long) = (rowcol % colsLong).toInt
   }
   def colMajor(rows: Int): Indexer = rowMajor(rows).transpose
-  def vStack(indexers: Seq[(Indexer, Int)], cols: Int) = new Indexer {
-    def rowCol(row: Int, col: Int) = {
-      require(col < cols, "col must be less than block num cols")
-      @tailrec
-      def rowColInner(rem: Seq[(Indexer, Int)], thisRow: Int): Long = {
-        val diff = thisRow - rem.head._2
-        if (diff < 0) {
-          rem.head._1.rowCol(thisRow, col)
-        } else {
-          rowColInner(rem.tail, diff)
-        }
-      }
-      rowColInner(indexers, row)
-    }
+  // def vStack(indexers: Seq[(Indexer, Int)], cols: Int) = new Indexer {
+  //   def rowCol(row: Int, col: Int) = {
+  //     require(col < cols, "col must be less than block num cols")
+  //     @tailrec
+  //     def rowColInner(rem: Seq[(Indexer, Int)], thisRow: Int): Long = {
+  //       val diff = thisRow - rem.head._2
+  //       if (diff < 0) {
+  //         rem.head._1.rowCol(thisRow, col)
+  //       } else {
+  //         rowColInner(rem.tail, diff)
+  //       }
+  //     }
+  //     rowColInner(indexers, row)
+  //   }
 
-    def row(rowcol: Long) = {
-      @tailrec
-      def rowColInner(rem: Seq[(Indexer, Int)], thisRC: Long, accRows: Int = 0): Int = {
-        val thisRows = rem.head._2
-        val diff = thisRC - thisRows.toLong * cols
-        if (diff < 0) {
-          println("accRows: %d, thisRC: %d".format(accRows, thisRC))
-          rem.head._1.row(thisRC) + accRows
-        } else {
-          rowColInner(rem.tail, diff, accRows + thisRows)
-        }
-      }
-      rowColInner(indexers, rowcol)
-    }
+  //   def row(rowcol: Long) = {
+  //     @tailrec
+  //     def rowColInner(rem: Seq[(Indexer, Int)], thisRC: Long, accRows: Int = 0): Int = {
+  //       val thisRows = rem.head._2
+  //       val diff = thisRC - thisRows.toLong * cols
+  //       if (diff < 0) {
+  //         println("accRows: %d, thisRC: %d".format(accRows, thisRC))
+  //         rem.head._1.row(thisRC) + accRows
+  //       } else {
+  //         rowColInner(rem.tail, diff, accRows + thisRows)
+  //       }
+  //     }
+  //     rowColInner(indexers, rowcol)
+  //   }
 
-    def col(rowcol: Long) = {
-      @tailrec
-      def rowColInner(rem: Seq[(Indexer, Int)], thisRC: Long): Int = {
-        val diff = thisRC - rem.head._2.toLong * cols
-        if (diff < 0) {
-          rem.head._1.col(thisRC)
-        } else {
-          rowColInner(rem.tail, diff)
-        }
-      }
-      rowColInner(indexers, rowcol)
-    }
-  }
+  //   def col(rowcol: Long) = {
+  //     @tailrec
+  //     def rowColInner(rem: Seq[(Indexer, Int)], thisRC: Long): Int = {
+  //       val diff = thisRC - rem.head._2.toLong * cols
+  //       if (diff < 0) {
+  //         rem.head._1.col(thisRC)
+  //       } else {
+  //         rowColInner(rem.tail, diff)
+  //       }
+  //     }
+  //     rowColInner(indexers, rowcol)
+  //   }
+  // }
 }
 
 trait LongPredicate {
