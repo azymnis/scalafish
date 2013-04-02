@@ -105,7 +105,7 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double, iters
       val dataFrobNorm = data.map { m => Matrix.frobNorm2(m) }.sum
       val rows = data.map { _.rows }.sum
       val out = SparseMatrix.zeros(rows, cols)
-      out := new ScalafishUpdater(Matrix.vStack(lSeq), Matrix.vStack(R), Matrix.vStack(data), rank)
+      out := new ScalafishUpdater(Matrix.vStack(lSeq), Matrix.vStack(R), Matrix.vStack(data))
       val approxFrobNorm = out.frobNorm2
       println("iter: %d, relerr: %.3f".format(iter, math.sqrt(approxFrobNorm / dataFrobNorm)))
     }
@@ -177,7 +177,7 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
       val Rn = R(updateIndex)
       val dataN = data(updateIndex)
       val deltaN = currentDelta(updateIndex)
-      def delta = new ScalafishUpdater(L, Rn, dataN, rank)
+      def delta = new ScalafishUpdater(L, Rn, dataN)
       val currentAlpha = (alpha / (1 + iteration)).toFloat
 
       deltaN := delta
