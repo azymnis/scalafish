@@ -152,7 +152,6 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
   var L: DenseMatrix = _
   var data: IndexedSeq[Matrix] = _
   var currentDelta: Matrix = _
-  var currentDelta2: Matrix = _
 
   var iteration = 0
 
@@ -191,14 +190,6 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
 
       Rn *= (1.0f - mu.toFloat * currentAlpha)
       Rn -= currentDelta.t * L
-
-      // val dObj = R.view
-      //   .zip(data)
-      //   .map { case (rn, dn) =>
-      //     currentDelta2 := new ScalafishUpdater(L, rn, dn, rank)
-      //     Matrix.frobNorm2(currentDelta2)
-      //   }
-      //   .sum
 
       val curObj = 0.5 * (0 + mu.toFloat * (Matrix.frobNorm2(L) + Matrix.frobNorm2(Rn)))
       iteration += 1
