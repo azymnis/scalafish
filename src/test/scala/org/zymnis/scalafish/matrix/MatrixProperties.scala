@@ -314,4 +314,23 @@ object MatrixProperties extends Properties("Matrix") {
   property("Set by slice is equivalent to regular set on 10x10, 3 slices") = sliceProperty(10, 3)
   property("Set by slice is equivalent to regular set on 8x8, 4 slices") = sliceProperty(8, 4)
   property("Set by slice is equivalent to regular set on 1x1, 3 slices") = sliceProperty(1, 3)
+
+  def vStackProperty(rows: Int, cols: Int, numSlices: Int)(implicit cons: Arbitrary[MatrixCons]) = {
+    val density = scala.math.random
+    implicit val arb = Arbitrary(denseOrSparse(rows, cols, density))
+
+    val eq = Equiv[Matrix].equiv _
+
+    forAll { mat: Matrix =>
+      val stacks = mat.rowSlice(numSlices)
+      val res = Matrix.vStack(stacks)
+      eq(mat, res)
+    }
+  }
+
+  property("RowSlice and vertical stack are inverse operations on 10x10, 3 slices") = vStackProperty(10, 10, 3)
+  property("RowSlice and vertical stack are inverse operations on 8x3, 2 slices") = vStackProperty(8, 3, 2)
+  property("RowSlice and vertical stack are inverse operations on 20x1, 1 slices") = vStackProperty(20, 1, 1)
+  property("RowSlice and vertical stack are inverse operations on 20x1, 5 slices") = vStackProperty(20, 1, 5)
+  property("RowSlice and vertical stack are inverse operations on 20x5, 20 slices") = vStackProperty(20, 5, 20)
 }

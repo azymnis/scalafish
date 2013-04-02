@@ -103,19 +103,5 @@ object DenseMatrix {
     result
   }
 
-  def frobNorm2(dm: DenseMatrix): Double = {
-    var result = 0.0
-    var rowIdx = 0
-    var colIdx = 0
-    while(colIdx < dm.cols) {
-      rowIdx = 0
-      while(rowIdx < dm.rows) {
-        val old = dm(rowIdx, colIdx).toDouble
-        result += old * old
-        rowIdx += 1
-      }
-      colIdx += 1
-    }
-    result
-  }
+  def frobNorm2(dm: DenseMatrix): Double = dm.frobNorm2
 }

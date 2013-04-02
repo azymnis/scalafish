@@ -45,7 +45,7 @@ trait Matrix extends Shaped { self =>
   def blockView(rowMin: Int, colMin: Int, rowMax: Int, colMax: Int): Matrix = new Matrix {
     def rows = rowMax - rowMin
     def cols = colMax - colMin
-    val indexer = Indexer.shifted(self.indexer, rowMin, colMin)
+    val indexer = Indexer.rowMajor(cols)
     override def apply(row: Int, col: Int) = self.apply(row + rowMin, col + colMin)
     override def update(row: Int, col: Int, f: Float) = self.update(row + rowMin, col + colMin, f)
   }
@@ -122,15 +122,21 @@ trait Matrix extends Shaped { self =>
     strb.append("\n")
     strb.toString
   }
+
+  def frobNorm2: Double = {
+    val it = denseIndices
+    var result = 0.0
+    while(it.hasNext) {
+      val idx = it.next
+      val valueD = apply(idx).toDouble
+      result += valueD * valueD
+    }
+    result
+  }
 }
 
 object Matrix {
-  def frobNorm2(m: Matrix): Double = {
-    m match {
-      case dm: DenseMatrix => DenseMatrix.frobNorm2(dm)
-      case sm: SparseMatrix => sm.frobNorm2
-    }
-  }
+  def frobNorm2(m: Matrix): Double = m.frobNorm2
 
   implicit val defaultEquiv = equiv(1e-6)
   // TODO this doesn't need to allocate
@@ -141,6 +147,33 @@ object Matrix {
       temp := m1 - m2
       val fnorm = frobNorm2(temp)
       fnorm < frobEps
+    }
+  }
+
+  def vStack(blocks: Seq[Matrix]): Matrix = new Matrix {
+    val cols = blocks.head.cols
+    require(blocks.forall { _.cols == cols },
+      "all blocks must have same number of columns")
+    val rows = blocks.map { _.rows }.sum
+    val indexer = {
+      val blockRows = blocks.map { m => (m.indexer, m.rows) }
+      Indexer.vStack(blockRows, cols)
+    }
+    val sizeMap = blocks
+      .view
+      .map { _.size }
+      .scanLeft(0L) { _ + _ }
+      .zip(blocks)
+      .toList // could be sortedmap
+
+    override def apply(ind: Long) = {
+      val (cnt, mat) = sizeMap.takeWhile { _._1 <= ind }.last
+      mat.apply(ind - cnt)
+    }
+
+    override def update(ind: Long, value: Float) = {
+      val (cnt, mat) = sizeMap.takeWhile { _._1 <= ind }.last
+      mat.update(ind - cnt, value)
     }
   }
 }

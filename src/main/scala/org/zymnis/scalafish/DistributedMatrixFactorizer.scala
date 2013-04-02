@@ -15,19 +15,20 @@ object DistributedMatrixFactorizer extends App {
 
   val rows = 10000
   val cols = 1000
-  val realRank = 20
+  val realRank = 4
   val factorRank = realRank + 4
-  val slices = 10
+  val slices = 5
   val p = 0.1
   val mu = 1e-3
-  val alpha = 1e-3
+  val alpha = 1e-1
+  val iters = 10
 
   val real = DenseMatrix.randLowRank(rows, cols, realRank)
   val dataMat = SparseMatrix.sample(p, real)
   val data = dataMat.rowSlice(slices)
 
   val system = ActorSystem("FactorizerSystem")
-  val master = system.actorOf(Props(new Master(cols, factorRank, slices, mu, alpha)), name = "master")
+  val master = system.actorOf(Props(new Master(cols, factorRank, slices, mu, alpha, iters)), name = "master")
   master ! StartMaster(data)
 }
 
@@ -45,7 +46,7 @@ case class CurrentL(myL: Matrix) extends FactorizerMessage
 
 // Actors start here
 
-class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double) extends Actor {
+class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double, iters: Int) extends Actor {
   import Syntax._
 
   val timeToWait = 5.seconds
@@ -54,6 +55,7 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double) exten
   implicit val ec = ExecutionContext.defaultExecutionContext(context.system)
 
   var R: Vector[Matrix] = _
+  var data: IndexedSeq[Matrix] = _
   val actors = (0 until slices).map{ ind =>
     context.actorOf(Props(new Worker(ind, cols, rank, slices, mu, alpha)), name = "worker_" + ind)
   }
@@ -65,17 +67,42 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double) exten
 
   def receive = {
     case StartMaster(data) => {
+      this.data = data
+
       println("initializing workers")
       updateWorkerData(data).flatMap { _ =>
         updateWorkerR
       }.flatMap { _ =>
-        steps(100) { i =>
+        steps(iters) { i =>
           doWorkerUpdates.flatMap { obj =>
-            println("Master iteration: %s, curObj: %4.3f".format(100 - i, obj))
+            println("Master iteration: %s, curObj: %4.3f".format(iters - i, obj))
             updateWorkerR
           }
         }
-      }.foreach { _ =>
+      }.flatMap { _ => lookupL }
+      .foreach { lSeq =>
+        val dataFrobNorm = data.map { m => Matrix.frobNorm2(m) }.sum
+
+        val approxBlocks = for {
+          l <- lSeq
+          r <- R
+        } yield (l, r)
+
+        val dataBlocks = for {
+          dataRow <- data
+          dataBlock <- dataRow.colSlice(slices)
+        } yield dataBlock
+
+        val approxFrobNorm = approxBlocks
+          .view
+          .zip(dataBlocks)
+          .map { case ((l, r), dataBlock) =>
+            dataBlock -= l*r.t
+            Matrix.frobNorm2(dataBlock)
+          }
+          .sum
+
+        println("relerr: %.3f".format(math.sqrt(approxFrobNorm / dataFrobNorm)))
         context.stop(self)
         context.system.shutdown()
       }
@@ -105,14 +132,22 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double) exten
 
   def doWorkerUpdates: Future[Double] = {
     val futures = actors.map{ worker =>
-      (worker ? DoUpdate).asInstanceOf[Future[UpdateResponse]].map { res =>
-        R(res.rIndex) := res.rSlice
+      (worker ? DoUpdate).mapTo[UpdateResponse].map { res =>
         res.objSlice
       }
     }
     Future.reduce(futures)(_ + _)
   }
 
+  def lookupL: Future[Seq[Matrix]] = {
+    Future.sequence {
+      actors.map { worker =>
+        (worker ? GetCurrentL)
+          .mapTo[CurrentL]
+          .map { _.myL }
+      }
+    }
+  }
 }
 
 class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double) extends Actor {
@@ -122,6 +157,7 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
   var L: DenseMatrix = _
   var data: IndexedSeq[Matrix] = _
   var currentDelta: Matrix = _
+  var currentDelta2: Matrix = _
 
   var iteration = 0
 
@@ -135,6 +171,7 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
     case UpdateWorkerData(mat) => {
       L = DenseMatrix.rand(mat.rows, rank)
       currentDelta = SparseMatrix.zeros(mat.rows, sliceSize)
+      currentDelta2 = SparseMatrix.zeros(mat.rows, sliceSize)
 
       data = mat.colSlice(slices)
 
@@ -160,8 +197,15 @@ class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, al
       Rn *= (1.0f - mu.toFloat * currentAlpha)
       Rn -= currentDelta.t * L
 
-      val curObj =
-        0.5 * (Matrix.frobNorm2(currentDelta) + mu.toFloat * (Matrix.frobNorm2(L) + Matrix.frobNorm2(Rn)))
+      val dObj = R.view
+        .zip(data)
+        .map { case (rn, dn) =>
+          currentDelta2 := new ScalafishUpdater(L, rn, dn, rank)
+          Matrix.frobNorm2(currentDelta2)
+        }
+        .sum
+
+      val curObj = 0.5 * (dObj + mu.toFloat * (Matrix.frobNorm2(L) + Matrix.frobNorm2(Rn)))
       iteration += 1
       sender ! UpdateResponse(Rn, updateIndex, curObj)
     }

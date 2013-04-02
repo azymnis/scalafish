@@ -24,13 +24,9 @@ object SimpleMatrixFactorizer extends App {
       }
       mf.update
     }
-    // println("LEFT:")
-    // println(mf.L)
-    // println("RIGHT:")
-    // println(mf.R)
   }
 
-  example(10000, 1000, 20, 200)
+  example(10000, 1000, 4, 10)
 }
 
 class SimpleMatrixFactorizer(data: SparseMatrix, rank: Int, mu: Float, alpha: Float) {

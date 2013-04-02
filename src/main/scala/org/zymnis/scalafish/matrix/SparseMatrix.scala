@@ -25,15 +25,15 @@ class SparseMatrix private (override val rows: Int,
       super.blockView(rowMin, colMin, rowMax, colMax)
     }
     else new Matrix {
-      val indexer = Indexer.shifted(self.indexer, rowMin, colMin)
-      override def rows = thisRows
-      override def cols = thisCols
-      override def apply(idx: Long) = self.apply(idx)
-      override def update(idx: Long, f: Float) = self.update(idx, f)
+      val indexer = Indexer.rowMajor(cols)
+      override val rows = thisRows
+      override val cols = thisCols
+      override def apply(row: Int, col: Int) = self.apply(row + rowMin, col + colMin)
+      override def update(row: Int, col: Int, f: Float) = self.update(row + rowMin, col + colMin, f)
       override def denseIndices = self.denseIndices.filter(
         new LongPredicate { def apply(l: Long) = {
-          val r = indexer.row(l)
-          val c = indexer.col(l)
+          val r = self.indexer.row(l) - rowMin
+          val c = self.indexer.col(l) - colMin
           (0 <= r && r < rows) && (0 <= c && c < cols)
         }
       })
@@ -58,17 +58,6 @@ class SparseMatrix private (override val rows: Int,
     val lit = hashMap.keySet.iterator
     def hasNext = lit.hasNext
     def next = lit.nextLong
-  }
-
-  def frobNorm2: Double = {
-    val it = denseIndices
-    var result = 0.0
-    while(it.hasNext) {
-      val idx = it.next
-      val valueD = hashMap.get(idx).toDouble
-      result += valueD * valueD
-    }
-    result
   }
 }
 
