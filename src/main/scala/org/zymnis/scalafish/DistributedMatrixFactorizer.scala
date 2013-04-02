@@ -13,15 +13,17 @@ import org.zymnis.scalafish.matrix._
 object DistributedMatrixFactorizer extends App {
   import Syntax._
 
+  implicit val rng = new java.util.Random(1)
+
   val rows = 10000
   val cols = 1000
   val realRank = 4
   val factorRank = realRank + 4
-  val slices = 5
+  val slices = 10
   val p = 0.1
-  val mu = 1e-4
-  val alpha = 1e-2
-  val iters = 400
+  val mu = 1e-3
+  val alpha = 5e-2
+  val iters = 200
 
   val real = DenseMatrix.randLowRank(rows, cols, realRank)
   val dataMat = SparseMatrix.sample(p, real)
@@ -53,6 +55,7 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double, iters
 
   implicit val timeout = Timeout(timeToWait)
   implicit val ec = ExecutionContext.defaultExecutionContext(context.system)
+  implicit val rng = new java.util.Random(2)
 
   var R: Vector[Matrix] = _
   var data: IndexedSeq[Matrix] = _
@@ -79,14 +82,15 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double, iters
             updateWorkerR
           }.flatMap { _ =>
             if (i % 20 == 0) {
-              printCurrentError(i)
+              printCurrentError(iters - i)
             } else {
               Future(())
             }
           }
         }
       }
-      .foreach { lSeq =>
+      .flatMap { _ => printCurrentError(iters) }
+      .foreach { _ =>
         context.stop(self)
         context.system.shutdown()
       }
@@ -102,12 +106,12 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double, iters
 
   def printCurrentError(iter: Int): Future[Unit] = {
     lookupL.map { lSeq =>
-      val dataFrobNorm = data.map { m => Matrix.frobNorm2(m) }.sum
+      val nnz = data.map{ _.nonZeros.toDouble }.sum
       val rows = data.map { _.rows }.sum
       val out = SparseMatrix.zeros(rows, cols)
       out := new ScalafishUpdater(Matrix.vStack(lSeq), Matrix.vStack(R), Matrix.vStack(data), rank)
       val approxFrobNorm = out.frobNorm2
-      println("iter: %d, relerr: %.3f".format(iter, math.sqrt(approxFrobNorm / dataFrobNorm)))
+      println("iter: %d, RMSE: %.3f".format(iter, math.sqrt(approxFrobNorm / nnz)))
     }
   }
 
@@ -146,6 +150,8 @@ class Master(cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double, iters
 }
 
 class Worker(workerIndex: Int, cols: Int, rank: Int, slices: Int, mu: Double, alpha: Double) extends Actor {
+  implicit val rng = new java.util.Random(workerIndex)
+
   import Syntax._
 
   var R: IndexedSeq[DenseMatrix] = _

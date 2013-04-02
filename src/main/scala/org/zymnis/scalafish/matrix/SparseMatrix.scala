@@ -88,9 +88,8 @@ object SparseMatrix {
   }
 
   // TODO: this can be made O(p * m.size) but is m.size now
-  def sample(prob: Double, m: Matrix): SparseMatrix = {
+  def sample(prob: Double, m: Matrix)(implicit rng: java.util.Random): SparseMatrix = {
     val s = zeros(m.rows, m.cols)
-    val rng = new java.util.Random
     val size = m.size
     var idx = 0L
     while (idx < size) {

@@ -71,6 +71,16 @@ trait Matrix extends Shaped { self =>
   def denseIndices: LongIterator =
     allIndices.filter(new LongPredicate { def apply(l: Long) = self(l) != 0.0f })
 
+  def nonZeros: Long = {
+    val iter = denseIndices
+    var nnz = 0L
+    while (iter.hasNext) {
+      iter.next
+      nnz += 1
+    }
+    nnz
+  }
+
   def rowSlice(numSlices: Int): IndexedSeq[Matrix] = {
     require(numSlices > 0, "numSlices must be positive")
     val rowsPerSlice = rows / numSlices

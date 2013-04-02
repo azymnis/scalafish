@@ -75,11 +75,10 @@ object DenseMatrix {
     z
   }
 
-  def rand(rows: Int, cols: Int): DenseMatrix = {
+  def rand(rows: Int, cols: Int)(implicit rng: java.util.Random): DenseMatrix = {
     val mat = zeros(rows, cols)
     var rowIdx = 0
     var colIdx = 0
-    val rng = new java.util.Random
     while(colIdx < cols) {
       rowIdx = 0
       while(rowIdx < rows) {
@@ -91,7 +90,7 @@ object DenseMatrix {
     mat
   }
 
-  def randLowRank(rows: Int, cols: Int, rank: Int): DenseMatrix = {
+  def randLowRank(rows: Int, cols: Int, rank: Int)(implicit rng: java.util.Random): DenseMatrix = {
     import Syntax._
 
     require(rank < rows, "Rank should be less than the number of rows")

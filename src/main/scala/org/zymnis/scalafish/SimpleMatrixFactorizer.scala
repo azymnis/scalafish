@@ -9,27 +9,31 @@ import scala.util.Random
 
 object SimpleMatrixFactorizer extends App {
   def example(rows: Int, cols: Int, rank: Int, steps: Int = 4) {
+    implicit val rng = new java.util.Random(1)
+
     val real = DenseMatrix.randLowRank(rows, cols, rank)
     val data = SparseMatrix.sample(0.1, real)
     val approx = DenseMatrix.zeros(rows, cols) // probably don't materialize this in the real deal
-    val mf = new SimpleMatrixFactorizer(data, rank + 4, 1e-3f, 1e-4f)
+    val mf = new SimpleMatrixFactorizer(data, rank + 4, 1e-3f, 1e-3f)
+    val nnz = real.nonZeros.toDouble
     (0 to steps).foreach{ i =>
       val obj = mf.currentObjective
       println("iteration: " + i + ", obj: " + obj)
       if(i % 5 == 0) {
         approx := mf.currentGuess
         approx -= real
-        val relerr = math.sqrt(Matrix.frobNorm2(approx)) / math.sqrt(Matrix.frobNorm2(real))
-        println("relerr: " + relerr)
+        val relerr = math.sqrt(Matrix.frobNorm2(approx)) / math.sqrt(nnz)
+        println("RMSE: " + relerr)
       }
       mf.update
     }
   }
 
-  example(10000, 1000, 4, 10)
+  example(10000, 1000, 4, 40)
 }
 
 class SimpleMatrixFactorizer(data: SparseMatrix, rank: Int, mu: Float, alpha: Float) {
+  implicit val rng = new java.util.Random(2)
 
   val L = DenseMatrix.rand(data.rows, rank)
   val R = DenseMatrix.rand(data.cols, rank)

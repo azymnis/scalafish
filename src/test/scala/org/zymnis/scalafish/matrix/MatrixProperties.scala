@@ -7,6 +7,7 @@ import org.scalacheck.Prop.forAll
 import Syntax._
 
 object MatrixProperties extends Properties("Matrix") {
+  implicit val rng = new java.util.Random(1)
 
   val FNORM_EPS = 1e-5
 
