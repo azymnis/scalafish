@@ -19,7 +19,10 @@ trait Matrix extends Shaped { self =>
   def writeToFile(fileName: String) {
     val p = new java.io.PrintWriter(fileName)
     try {
-      Matrix.toMap(self).foreach { case (idx, value) =>
+      val iter = self.denseIndices
+      while (iter.hasNext) {
+        val idx = iter.next
+        val value = apply(idx)
         val row = indexer.row(idx)
         val col = indexer.col(idx)
         val line = "%d\t%d\t%4.5f".format(row, col, value)
