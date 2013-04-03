@@ -71,9 +71,15 @@ object SparseMatrix {
   def zeros(rows: Int, cols: Int): SparseMatrix =
     new SparseMatrix(rows, cols,  Indexer.rowMajor(cols), new Long2FloatMap)
 
+  // TODO: Inefficient, fix
   def from(rows: Int, cols: Int, rep: Map[Long, Float]): SparseMatrix = {
-    // TODO
-    null
+    val out = zeros(rows, cols)
+    val iter = rep.keysIterator
+    while (iter.hasNext) {
+      val key = iter.next
+      out.update(key, out(key))
+    }
+    out
   }
 
   def from(rows: Int, cols: Int, row: Iterable[Int], col: Iterable[Int], vs: Array[Float]): SparseMatrix = {

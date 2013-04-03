@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 
 class DenseMatrix private (override val rows: Int, override val cols: Int, override val indexer: Indexer) extends Matrix {
   assert(rows > 0, "rows must be > 0")
-  assert(cols > 0, "rows must be > 0")
+  assert(cols > 0, "cols must be > 0")
 
   import DenseMatrix.BYTES_PER_FLOAT
   val MAX_BYTE_BUFFER = Int.MaxValue

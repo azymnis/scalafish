@@ -13,8 +13,18 @@ import org.zymnis.scalafish.ScalafishUpdater
 
 import Syntax._
 
+object Distributed2Factorizer extends App {
+  val loader = new TestLoader
+
+  val system = ActorSystem("FactorizerSystem")
+  val master = system.actorOf(Props(new Master2()), name = "master")
+  master ! Load(SupervisorId(0), loader)
+}
+
 // Some constants for testing
 object Distributed2 {
+  implicit val rng = new java.util.Random
+
   val ROWS = 1000
   val COLS = 100
   val SUPERVISORS = 2
@@ -26,6 +36,7 @@ object Distributed2 {
   val ITERS = 400
   //val WORKERS = java.lang.Runtime.getRuntime.availableProcessors
   val WORKERS = 2
+  val MAX_STEPS = 100
 
   require(ROWS % (SUPERVISORS * WORKERS) == 0, "Rows must be divisable by supervisors")
   require(COLS % (SUPERVISORS * WORKERS) == 0, "Cols must be divisable by supervisors")
@@ -34,14 +45,16 @@ object Distributed2 {
 case class Load(supervisor: SupervisorId, loader: MatrixLoader)
 case class Loaded(supervisor: SupervisorId)
 // TODO: RunStep and DoStep are basically the same
-case class RunStep(step: StepId, part: PartitionId, worker: WorkerId, data: Matrix)
-case class DoStep(worker: WorkerId, step: StepId, part: PartitionId, right: Matrix, mu: Float, alpha: Float)
-case class DoneStep(worker: WorkerId, step: StepId, part: PartitionId, right: Matrix)
+case class RunStep(step: StepId, part: PartitionId, worker: WorkerId, data: Matrix, getObj: Boolean) {
+  def alpha: Float = (Distributed2.ALPHA / (step.id + 1)).toFloat
+}
+case class DoneStep(worker: WorkerId, step: StepId, part: PartitionId, right: Matrix, objOpt: Option[Double])
 case class InitializeData(workerId: WorkerId, sparseMatrix: Map[Long, Float])
 case class Initialized(worker: WorkerId)
 
 class Master2 extends Actor {
   import Distributed2._
+  implicit val rng = new java.util.Random(1)
 
   sealed trait SupervisorState
   case class Initialized(index: SupervisorId) extends SupervisorState
@@ -54,7 +67,6 @@ class Master2 extends Actor {
   }.toMap
 
   var supervisors: IndexedSeq[SupervisorState] = (0 until SUPERVISORS).map { ind => Initialized(SupervisorId(ind)) }
-
 
   var partitionState: IndexedSeq[(StepId, SupervisorId)] = null
 
@@ -69,11 +81,13 @@ class Master2 extends Actor {
   context.setReceiveTimeout(120 seconds)
 
   def genPart: Matrix =
-    DenseMatrix.rand(COLS/SUPERVISORS/ROWS, FACTORRANK)
+    DenseMatrix.rand(COLS/SUPERVISORS/WORKERS, FACTORRANK)
+
 
   def receive = {
     case Load(_, loader) =>
       if(masterLoader == null) {
+        println("sending message to load data")
         masterLoader = loader
         supervisors = loader.rowPartition(supervisors.size)
           .zip(supervisors)
@@ -94,9 +108,11 @@ class Master2 extends Actor {
         case _ => false
       }) {
         // Everyone is loaded, now step:
+        println("all supervisors initialized")
         if(partitionState == null) startComputation
       }
-    case DoneStep(worker, step, part, mat) =>
+    case DoneStep(worker, step, part, mat, obj) =>
+      obj.foreach { o => println("step %d, partition %d, OBJ: %4.3f".format(step.id, part.id, o)) }
       finishStep(step, part, mat)
 
     case ReceiveTimeout => ()
@@ -110,7 +126,7 @@ class Master2 extends Actor {
     partitionState = (0 until totalWorkers).map { partid =>
       val part = PartitionId(partid)
       val (sid, wid) = fn(part)
-      superMap(sid) ! RunStep(step0, part, wid, rightData(partid)._2)
+      superMap(sid) ! RunStep(step0, part, wid, rightData(partid)._2, true)
       supervisors = supervisors.updated(sid.id, Working(step0, part, sid))
       (step0, sid)
     }
@@ -120,14 +136,18 @@ class Master2 extends Actor {
   def finishStep(step: StepId, partition: PartitionId, mat: Matrix): Unit = {
     // Copy this into memory
     val (currentStep, inmemoryMat) = rightData(partition.id)
-    if(currentStep == step) {
+    if (currentStep == step) {
+      println("step %d, partition %d".format(step.id, partition.id))
       val newStep = currentStep.next
       // Copy, don't keep a reference to mat
       inmemoryMat := mat
       // Now send this matrix for it's next step:
       val (sup, work) = updateStrategy.route(newStep)(partition)
-      val rs = RunStep(newStep, partition, work, mat)
+      val getObj = newStep.id % 20 == 0
+      val rs = RunStep(newStep, partition, work, mat, getObj)
       rightData = rightData.updated(partition.id, (newStep, inmemoryMat))
+      supervisors = supervisors.updated(sup.id, Working(newStep, partition, sup))
+      partitionState = partitionState.updated(partition.id, (newStep, sup))
       superMap(sup) ! rs
     }
   }
@@ -138,6 +158,7 @@ class Master2 extends Actor {
  */
 class Supervisor extends Actor {
   import Distributed2._
+  implicit val rng = new java.util.Random(2)
 
   var supervisorIdx: SupervisorId = null
   var initialized = false
@@ -200,11 +221,11 @@ class Supervisor extends Actor {
       }
       checkIfInited
 
-    case RunStep(step, part, worker, mat) =>
-      workers(worker.id) ! DoStep(worker, step, part, mat, MU, (ALPHA/(step.id+1)).toFloat)
-    case DoneStep(worker, step, part, mat) =>
+    case rs @ RunStep(step, part, worker, mat, getObj) =>
+      workers(worker.id) ! rs
+    case ds: DoneStep =>
       // TODO, cache? or will lost messages be rare enough?
-      context.parent ! DoneStep(worker, step, part, mat)
+      context.parent ! ds
 
     case ReceiveTimeout =>
       waitingMsg.collect { case (wid: WorkerId, msg: InitializeData) => workers(wid.id) ! msg }
@@ -213,10 +234,19 @@ class Supervisor extends Actor {
 
 class Worker extends Actor {
   import Distributed2._
+  implicit val rng = new java.util.Random(3)
 
   val left: Matrix = DenseMatrix.rand(ROWS / SUPERVISORS / WORKERS, FACTORRANK)
   val delta: IndexedSeq[Matrix] = SparseMatrix.zeros(ROWS/WORKERS/SUPERVISORS, COLS).colSlice(WORKERS*SUPERVISORS)
   var data: IndexedSeq[Matrix] = null
+
+  def calcObj(right: Matrix, data: Matrix, delta: Matrix, getObj: Boolean): Option[Double] = if (getObj) {
+    val deltaUD = new ScalafishUpdater(left, right, data)
+    delta := deltaUD
+    Some(delta.frobNorm2)
+  } else {
+    None
+  }
 
   def receive = {
     case InitializeData(worker, sm) =>
@@ -225,10 +255,10 @@ class Worker extends Actor {
       }
       sender ! Initialized(worker)
 
-    case DoStep(worker, step, part, right, mu, alpha) =>
-      doStep(data(part.id), delta(part.id), right, mu, alpha)
+    case rs @ RunStep(step, part, worker, right, getObj) =>
+      doStep(data(part.id), delta(part.id), right, MU, rs.alpha)
       // Send back the result
-      sender ! DoneStep(worker, step, part, right)
+      sender ! DoneStep(worker, step, part, right, calcObj(right, data(part.id), delta(part.id), getObj))
   }
 
   def doStep(data: Matrix, delta: Matrix, right: Matrix, mu: Float, alpha: Float): Unit = {

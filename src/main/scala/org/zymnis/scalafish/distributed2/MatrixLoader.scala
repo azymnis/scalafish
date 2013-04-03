@@ -18,7 +18,7 @@ object MatrixLoader {
   }
 }
 
-class TestLoader {
+class TestLoader extends MatrixLoader {
   import Distributed2._
   val real = DenseMatrix.randLowRank(ROWS, COLS, REALRANK)
   val load = SparseMatrix.sample(DENSITY, real)

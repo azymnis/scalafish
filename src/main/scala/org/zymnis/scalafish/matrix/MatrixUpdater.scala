@@ -78,8 +78,8 @@ object MatrixUpdater {
   def scale(scalar: Float): MatrixUpdater = new MatrixUpdater {
     def update(m: Matrix) {
       m match {
-        case dm: DenseMatrix => denseUpdate(dm)
         case sm: SparseMatrix => sparseUpdate(sm)
+        case _ => denseUpdate(m)
       }
     }
     def sparseUpdate(s: SparseMatrix) {
@@ -89,7 +89,7 @@ object MatrixUpdater {
         s.update(idx, s(idx) * scalar)
       }
     }
-    def denseUpdate(m: DenseMatrix) {
+    def denseUpdate(m: Matrix) {
       var rowIdx = 0
       while(rowIdx < m.rows) {
         var colIdx = 0
