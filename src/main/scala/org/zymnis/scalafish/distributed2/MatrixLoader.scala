@@ -28,6 +28,12 @@ class TestLoader extends MatrixLoader {
   def rowPartition(parts: Int) = load.rowSlice(parts).map { MatrixLoader.from(_) }
 }
 
+class FileLoader(override val rows: Int, override val cols: Int, fileName: String)
+  extends MatrixLoader {
+  override val load = SparseMatrix.fromFile(rows, cols, fileName)
+  def rowPartition(parts: Int) = load.rowSlice(parts).map { MatrixLoader.from(_) }
+}
+
 trait MatrixWriter {
   def rows: Int
   def cols: Int
