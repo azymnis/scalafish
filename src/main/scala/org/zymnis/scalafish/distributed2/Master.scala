@@ -3,6 +3,7 @@ package org.zymnis.scalafish.distributed2
 import akka.actor._
 import akka.dispatch.{Await, ExecutionContext, Future}
 import akka.pattern.ask
+import akka.remote.RemoteScope
 import akka.util.{Duration, Timeout}
 import akka.util.duration._
 
@@ -23,8 +24,12 @@ class Master extends Actor {
   case object HasLoaded extends SupervisorState
   case class Working(step: StepId, part: PartitionId) extends SupervisorState
 
+  val firstSupervisorPort = 2553
   val superMap: Map[SupervisorId, ActorRef] = (0 until SUPERVISORS).map { sid =>
-    (SupervisorId(sid), context.actorOf(Props[Supervisor], name = "supervisor_" + sid))
+    val address = Address("akka.tcp", "FactorizerSystem", "localhost", firstSupervisorPort + sid)
+    (SupervisorId(sid), context.actorOf(
+      Props[Supervisor].withDeploy(Deploy(scope = RemoteScope(address))),
+      name = "supervisor_" + sid))
   }.toMap
 
   var supervisors: IndexedSeq[SupervisorState] = IndexedSeq.fill(SUPERVISORS)(Initialized)
