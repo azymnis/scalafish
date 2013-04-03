@@ -28,15 +28,14 @@ object Distributed2 {
   val ROWS = 1000
   val COLS = 100
   val SUPERVISORS = 2
-  val REALRANK = 4
-  val FACTORRANK = REALRANK + 4
+  val WORKERS = 2
+  val REALRANK = 10
+  val FACTORRANK = REALRANK + 5
   val DENSITY = 0.1
   val MU = 1e-4f
-  val ALPHA = 1e-2
-  val ITERS = 400
+  val ALPHA = 1e-1
+  val ITERS = 80
   //val WORKERS = java.lang.Runtime.getRuntime.availableProcessors
-  val WORKERS = 2
-  val MAX_STEPS = 100
 
   require(ROWS % (SUPERVISORS * WORKERS) == 0, "Rows must be divisable by supervisors")
   require(COLS % (SUPERVISORS * WORKERS) == 0, "Cols must be divisable by supervisors")
@@ -83,7 +82,6 @@ class Master2 extends Actor {
   def genPart: Matrix =
     DenseMatrix.rand(COLS/SUPERVISORS/WORKERS, FACTORRANK)
 
-
   def receive = {
     case Load(_, loader) =>
       if(masterLoader == null) {
@@ -114,6 +112,7 @@ class Master2 extends Actor {
     case DoneStep(worker, step, part, mat, obj) =>
       obj.foreach { o => println("step %d, partition %d, OBJ: %4.3f".format(step.id, part.id, o)) }
       finishStep(step, part, mat)
+      checkTermination(step)
 
     case ReceiveTimeout => ()
       // Retry everyone who hasn't responded yet, they may have lost the message
@@ -130,14 +129,14 @@ class Master2 extends Actor {
       supervisors = supervisors.updated(sid.id, Working(step0, part, sid))
       (step0, sid)
     }
-
   }
+
   // Update state and return the next message pair to send
   def finishStep(step: StepId, partition: PartitionId, mat: Matrix): Unit = {
     // Copy this into memory
     val (currentStep, inmemoryMat) = rightData(partition.id)
     if (currentStep == step) {
-      println("step %d, partition %d".format(step.id, partition.id))
+      // println("step %d, partition %d".format(step.id, partition.id))
       val newStep = currentStep.next
       // Copy, don't keep a reference to mat
       inmemoryMat := mat
@@ -149,6 +148,13 @@ class Master2 extends Actor {
       supervisors = supervisors.updated(sup.id, Working(newStep, partition, sup))
       partitionState = partitionState.updated(partition.id, (newStep, sup))
       superMap(sup) ! rs
+    }
+  }
+
+  def checkTermination(step: StepId) {
+    if (step.id > ITERS && partitionState.forall { _._1.id > ITERS }) {
+      context.stop(self)
+      context.system.shutdown()
     }
   }
 }
@@ -243,7 +249,7 @@ class Worker extends Actor {
   def calcObj(right: Matrix, data: Matrix, delta: Matrix, getObj: Boolean): Option[Double] = if (getObj) {
     val deltaUD = new ScalafishUpdater(left, right, data)
     delta := deltaUD
-    Some(delta.frobNorm2)
+    Some(math.sqrt(delta.frobNorm2 / data.nonZeros))
   } else {
     None
   }
