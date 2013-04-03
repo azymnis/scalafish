@@ -4,6 +4,8 @@ import org.scalacheck.{Arbitrary, Gen, Properties}
 import org.scalacheck.Gen._
 import org.scalacheck.Prop.forAll
 
+import java.util.UUID
+
 import Syntax._
 
 object MatrixProperties extends Properties("Matrix") {
@@ -337,4 +339,22 @@ object MatrixProperties extends Properties("Matrix") {
   property("RowSlice and vertical stack are inverse operations on 20x1, 1 slices") = vStackProperty(20, 1, 1)
   property("RowSlice and vertical stack are inverse operations on 20x1, 5 slices") = vStackProperty(20, 1, 5)
   property("RowSlice and vertical stack are inverse operations on 20x5, 20 slices") = vStackProperty(20, 5, 20)
+
+  def fileRoundTripProperty(rows: Int, cols: Int)(implicit cons: Arbitrary[MatrixCons]) = {
+    val density = scala.math.random
+    implicit val arb = Arbitrary(denseOrSparse(rows, cols, density))
+
+    val eq = Equiv[Matrix].equiv _
+
+    forAll { mat: Matrix =>
+      val fileName = "/tmp/%s".format(UUID.randomUUID)
+      mat.writeToFile(fileName)
+      val mat2 = SparseMatrix.fromFile(mat.rows, mat.cols, fileName)
+      new java.io.File(fileName).delete()
+      eq(mat, mat2)
+    }
+  }
+
+  property("Matrix roundtrips to file 10x10") = fileRoundTripProperty(10, 10)
+
 }
