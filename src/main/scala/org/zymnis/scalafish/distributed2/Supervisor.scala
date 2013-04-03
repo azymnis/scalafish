@@ -66,6 +66,7 @@ class Supervisor extends Actor {
 
   def receive = {
     case Load(idx, loader) =>
+      println("Supervisor %s is loading.".format(self.path))
       load(idx, loader)
       checkIfInited
 
