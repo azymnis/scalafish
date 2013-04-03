@@ -1,12 +1,5 @@
 package org.zymnis.scalafish.distributed2
 
-case class StepId(id: Int) {
-  def next: StepId = StepId(id + 1)
-}
-case class WorkerId(id: Int)
-case class SupervisorId(id: Int)
-case class PartitionId(id: Int)
-
 trait UpdateStrategy {
   def workersPerSupervisor: Int
   def supervisors: Int
