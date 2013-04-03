@@ -1,8 +1,9 @@
 package org.zymnis.scalafish.matrix
 
+import scala.annotation.tailrec
 import scala.math.Equiv
 
-import scala.annotation.tailrec
+import java.io.{ File, PrintWriter }
 
 /** Addresses the specific needs we have for matrices
  * Specifically optimized for avoiding allocations, and the (Int,Int) => Float case
@@ -14,6 +15,21 @@ trait Matrix extends Shaped { self =>
   def size: Long = rows.toLong * cols.toLong
 
   def indexer: Indexer
+
+  def writeToFile(fileName: String) {
+    val p = new java.io.PrintWriter(fileName)
+    try {
+      Matrix.toMap(self).foreach { case (idx, value) =>
+        val row = indexer.row(idx)
+        val col = indexer.col(idx)
+        val line = "%d\t%d\t%4.5f".format(row, col, value)
+        p.println(line)
+      }
+    } finally {
+      p.close()
+    }
+  }
+
   def apply(rowcol: Long): Float = {
     val row = indexer.row(rowcol)
     val col = indexer.col(rowcol)
