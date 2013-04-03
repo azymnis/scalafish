@@ -25,16 +25,16 @@ object Distributed2Factorizer extends App {
 object Distributed2 {
   implicit val rng = new java.util.Random
 
-  val ROWS = 1000
-  val COLS = 100
+  val ROWS = 3000
+  val COLS = 1000
   val SUPERVISORS = 2
-  val WORKERS = 2
+  val WORKERS = 4
   val REALRANK = 10
   val FACTORRANK = REALRANK + 5
   val DENSITY = 0.1
   val MU = 1e-4f
-  val ALPHA = 1e-1
-  val ITERS = 80
+  val ALPHA = 1e-2
+  val ITERS = 10
   //val WORKERS = java.lang.Runtime.getRuntime.availableProcessors
 
   require(ROWS % (SUPERVISORS * WORKERS) == 0, "Rows must be divisable by supervisors")
@@ -48,7 +48,7 @@ case class RunStep(step: StepId, part: PartitionId, worker: WorkerId, data: Matr
   def alpha: Float = (Distributed2.ALPHA / (step.id + 1)).toFloat
 }
 case class DoneStep(worker: WorkerId, step: StepId, part: PartitionId, right: Matrix, objOpt: Option[Double])
-case class InitializeData(workerId: WorkerId, sparseMatrix: Map[Long, Float])
+case class InitializeData(workerId: WorkerId, sparseMatrix: Matrix)
 case class Initialized(worker: WorkerId)
 
 class Master2 extends Actor {
@@ -96,7 +96,7 @@ class Master2 extends Actor {
               Loading(part, sid)
             case (part, _) => sys.error("unreachable")
           }
-          rightData = (0 to totalWorkers).map { _ => (StepId(0), genPart) }
+          rightData = (0 until totalWorkers).map { _ => (StepId(0), genPart) }
       }
 
     case Loaded(idx) =>
@@ -110,6 +110,7 @@ class Master2 extends Actor {
         if(partitionState == null) startComputation
       }
     case DoneStep(worker, step, part, mat, obj) =>
+      // if (part.id == 0) println("right: " + rightData(0))
       obj.foreach { o => println("step %d, partition %d, OBJ: %4.3f".format(step.id, part.id, o)) }
       finishStep(step, part, mat)
       checkTermination(step)
@@ -142,7 +143,8 @@ class Master2 extends Actor {
       inmemoryMat := mat
       // Now send this matrix for it's next step:
       val (sup, work) = updateStrategy.route(newStep)(partition)
-      val getObj = newStep.id % 20 == 0
+      // val getObj = newStep.id % 20 == 0
+      val getObj = true
       val rs = RunStep(newStep, partition, work, mat, getObj)
       rightData = rightData.updated(partition.id, (newStep, inmemoryMat))
       supervisors = supervisors.updated(sup.id, Working(newStep, partition, sup))
@@ -152,7 +154,7 @@ class Master2 extends Actor {
   }
 
   def checkTermination(step: StepId) {
-    if (step.id > ITERS && partitionState.forall { _._1.id > ITERS }) {
+    if (step.id >= ITERS && rightData.forall { _._1.id > ITERS }) {
       context.stop(self)
       context.system.shutdown()
     }
@@ -191,7 +193,6 @@ class Supervisor extends Actor {
       loader.rowPartition(WORKERS)
          .view
          .map { _.load }
-         .map { Matrix.toMap(_) }
          .zip(workers)
          .zipWithIndex
          .foreach { case ((mapData, worker), idx) =>
@@ -256,14 +257,16 @@ class Worker extends Actor {
 
   def receive = {
     case InitializeData(worker, sm) =>
+      println("initializing data for worker: " + worker.id)
       if (data == null) {
-        data = SparseMatrix.from(ROWS/SUPERVISORS/WORKERS, COLS, sm).colSlice(SUPERVISORS * WORKERS)
+        data = sm.colSlice(SUPERVISORS * WORKERS)
       }
       sender ! Initialized(worker)
 
     case rs @ RunStep(step, part, worker, right, getObj) =>
       doStep(data(part.id), delta(part.id), right, MU, rs.alpha)
       // Send back the result
+      // if (worker.id == 0) println("left: " + left)
       sender ! DoneStep(worker, step, part, right, calcObj(right, data(part.id), delta(part.id), getObj))
   }
 
