@@ -77,7 +77,7 @@ object SparseMatrix {
     val iter = rep.keysIterator
     while (iter.hasNext) {
       val key = iter.next
-      out.update(key, out(key))
+      out.update(key, rep(key))
     }
     out
   }
