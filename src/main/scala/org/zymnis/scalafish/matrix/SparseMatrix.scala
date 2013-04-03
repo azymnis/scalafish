@@ -82,6 +82,21 @@ object SparseMatrix {
     out
   }
 
+  // Reads matrix from a TSV file with three columns
+  def fromFile(rows: Int, cols: Int, fileName: String): SparseMatrix = {
+    val out = zeros(rows, cols)
+    scala.io.Source.fromFile(fileName).getLines.foreach { line =>
+      val data = line.split("\t")
+      if (data.size == 3) {
+        val row = data(0).toInt
+        val col = data(1).toInt
+        val value = data(2).toFloat
+        out.update(row, col, value)
+      }
+    }
+    out
+  }
+
   def from(rows: Int, cols: Int, row: Iterable[Int], col: Iterable[Int], vs: Array[Float]): SparseMatrix = {
     val idxer = Indexer.rowMajor(cols)
     val indices = row.view.zip(col).map { case (row, col) => idxer.rowCol(row, col) }.toArray
