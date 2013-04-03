@@ -15,10 +15,12 @@ import Syntax._
 
 object Distributed2Factorizer extends App {
   val loader = new TestLoader
+  val lwriter = new PrintWriter(-1, -1)
+  val rwriter = new PrintWriter(-1, -1)
 
   val system = ActorSystem("FactorizerSystem")
   val master = system.actorOf(Props(new Master2()), name = "master")
-  master ! Load(SupervisorId(0), loader)
+  master ! Start(loader, lwriter, rwriter)
 }
 
 // Some constants for testing
@@ -41,38 +43,46 @@ object Distributed2 {
   require(COLS % (SUPERVISORS * WORKERS) == 0, "Cols must be divisable by supervisors")
 }
 
+case class Start(loader: MatrixLoader, lwriter: MatrixWriter, rwriter: MatrixWriter)
 case class Load(supervisor: SupervisorId, loader: MatrixLoader)
 case class Loaded(supervisor: SupervisorId)
-// TODO: RunStep and DoStep are basically the same
 case class RunStep(step: StepId, part: PartitionId, worker: WorkerId, data: Matrix, getObj: Boolean) {
   def alpha: Float = (Distributed2.ALPHA / (step.id + 1)).toFloat
 }
 case class DoneStep(worker: WorkerId, step: StepId, part: PartitionId, right: Matrix, objOpt: Option[Double])
 case class InitializeData(workerId: WorkerId, sparseMatrix: Matrix)
 case class Initialized(worker: WorkerId)
+case class Write(part: PartitionId, writer: MatrixWriter)
+case class Written(part: PartitionId)
 
 class Master2 extends Actor {
   import Distributed2._
   implicit val rng = new java.util.Random(1)
 
   sealed trait SupervisorState
-  case class Initialized(index: SupervisorId) extends SupervisorState
-  case class Loading(part: MatrixLoader, index: SupervisorId) extends SupervisorState
-  case class HasLoaded(index: SupervisorId) extends SupervisorState
-  case class Working(step: StepId, part: PartitionId, index: SupervisorId) extends SupervisorState
+  case object Initialized extends SupervisorState
+  case class Loading(loader: MatrixLoader) extends SupervisorState
+  case object HasLoaded extends SupervisorState
+  case class Working(step: StepId, part: PartitionId) extends SupervisorState
 
   val superMap: Map[SupervisorId, ActorRef] = (0 until SUPERVISORS).map { sid =>
     (SupervisorId(sid), context.actorOf(Props[Supervisor], name = "supervisor_" + sid))
   }.toMap
 
-  var supervisors: IndexedSeq[SupervisorState] = (0 until SUPERVISORS).map { ind => Initialized(SupervisorId(ind)) }
+  var supervisors: IndexedSeq[SupervisorState] = IndexedSeq.fill(SUPERVISORS)(Initialized)
 
   var partitionState: IndexedSeq[(StepId, SupervisorId)] = null
 
   val updateStrategy: UpdateStrategy = new CyclicUpdates(WORKERS, SUPERVISORS)
 
   var masterLoader: MatrixLoader = null
+  var masterLeftWriter: MatrixWriter = null
+  // TODO the master should write out R
+  var masterRightWriter: MatrixWriter = null
   var rightData: IndexedSeq[(StepId, Matrix)] = null
+
+  var writing: Boolean = false
+  var writtenPartitions: Set[PartitionId] = Set[PartitionId]()
 
   def totalWorkers = SUPERVISORS * WORKERS
 
@@ -83,26 +93,33 @@ class Master2 extends Actor {
     DenseMatrix.rand(COLS/SUPERVISORS/WORKERS, FACTORRANK)
 
   def receive = {
-    case Load(_, loader) =>
+    case Start(loader, lwriter, rwriter) =>
       if(masterLoader == null) {
         println("sending message to load data")
         masterLoader = loader
+        masterLeftWriter = lwriter
+        masterRightWriter = rwriter
         supervisors = loader.rowPartition(supervisors.size)
+          .view
           .zip(supervisors)
+          .zipWithIndex
           .map {
-            case (part, Initialized(sid)) =>
+            case ((loadPart, Initialized), sidx) =>
+              val sid = SupervisorId(sidx)
               val actor = superMap(sid)
-              actor ! Load(sid, part)
-              Loading(part, sid)
+              actor ! Load(sid, loadPart)
+              Loading(loadPart)
             case (part, _) => sys.error("unreachable")
           }
+          .toIndexedSeq
+
           rightData = (0 until totalWorkers).map { _ => (StepId(0), genPart) }
       }
 
     case Loaded(idx) =>
-      supervisors = supervisors.updated(idx.id, HasLoaded(idx))
+      supervisors = supervisors.updated(idx.id, HasLoaded)
       if(supervisors.forall {
-        case HasLoaded(_) => true
+        case HasLoaded => true
         case _ => false
       }) {
         // Everyone is loaded, now step:
@@ -112,12 +129,21 @@ class Master2 extends Actor {
     case DoneStep(worker, step, part, mat, obj) =>
       // if (part.id == 0) println("right: " + rightData(0))
       obj.foreach { o => println("step %d, partition %d, OBJ: %4.3f".format(step.id, part.id, o)) }
+      val wasFinished = allRsFinished
       finishStep(step, part, mat)
-      checkTermination(step)
+      checkTermination
+
+    case Written(part) =>
+      writtenPartitions += part
+      checkTermination
 
     case ReceiveTimeout => ()
       // Retry everyone who hasn't responded yet, they may have lost the message
-      supervisors.collect { case Loading(part, idx) => superMap(idx) ! Load(idx, part) }
+      supervisors.zipWithIndex.collect { case (Loading(lpart), idx) =>
+        val sidx = SupervisorId(idx)
+        superMap(sidx) ! Load(sidx, lpart)
+      }
+      checkTermination
   }
 
   def startComputation: Unit = {
@@ -127,7 +153,7 @@ class Master2 extends Actor {
       val part = PartitionId(partid)
       val (sid, wid) = fn(part)
       superMap(sid) ! RunStep(step0, part, wid, rightData(partid)._2, true)
-      supervisors = supervisors.updated(sid.id, Working(step0, part, sid))
+      supervisors = supervisors.updated(sid.id, Working(step0, part))
       (step0, sid)
     }
   }
@@ -145,18 +171,31 @@ class Master2 extends Actor {
       val (sup, work) = updateStrategy.route(newStep)(partition)
       // val getObj = newStep.id % 20 == 0
       val getObj = true
-      val rs = RunStep(newStep, partition, work, mat, getObj)
       rightData = rightData.updated(partition.id, (newStep, inmemoryMat))
-      supervisors = supervisors.updated(sup.id, Working(newStep, partition, sup))
-      partitionState = partitionState.updated(partition.id, (newStep, sup))
-      superMap(sup) ! rs
+      if(currentStep.id < ITERS) {
+        val rs = RunStep(newStep, partition, work, mat, getObj)
+        supervisors = supervisors.updated(sup.id, Working(newStep, partition))
+        partitionState = partitionState.updated(partition.id, (newStep, sup))
+        superMap(sup) ! rs
+      }
     }
   }
 
-  def checkTermination(step: StepId) {
-    if (step.id >= ITERS && rightData.forall { _._1.id > ITERS }) {
+  def allRsFinished: Boolean = partitionState.forall { _._1.id >= ITERS }
+
+  def checkTermination {
+    if(writtenPartitions.size == totalWorkers) {
       context.stop(self)
       context.system.shutdown()
+    }
+    else if (allRsFinished) {
+      masterLeftWriter.rowPartition(SUPERVISORS)
+        .view
+        .zip(superMap)
+        .foreach { case (swriter, (sid, aref)) =>
+          val baseId = PartitionId(sid.id * WORKERS)
+          aref ! Write(baseId, swriter)
+        }
     }
   }
 }
@@ -181,10 +220,6 @@ class Supervisor extends Actor {
 
   implicit val timeout = Timeout(timeToWait)
   implicit val ec = ExecutionContext.defaultExecutionContext(context.system)
-
-  def sendRightToMaster(step: StepId, id: PartitionId): Future[Boolean] = {
-    null
-  }
 
   def load(sIdx: SupervisorId, loader: MatrixLoader): Unit =
     if(!initialized) {
@@ -234,6 +269,18 @@ class Supervisor extends Actor {
       // TODO, cache? or will lost messages be rare enough?
       context.parent ! ds
 
+    case Write(basePart, mwriter) =>
+      mwriter.rowPartition(WORKERS)
+        .view
+        .zip(workers)
+        .zipWithIndex
+        .foreach { case ((writer, worker), widx) =>
+          val offset = basePart.id
+          val part = PartitionId(offset + widx)
+          worker ! Write(part, writer)
+        }
+
+    case w: Written => context.parent ! w
     case ReceiveTimeout =>
       waitingMsg.collect { case (wid: WorkerId, msg: InitializeData) => workers(wid.id) ! msg }
   }
@@ -246,6 +293,7 @@ class Worker extends Actor {
   val left: Matrix = DenseMatrix.rand(ROWS / SUPERVISORS / WORKERS, FACTORRANK)
   val delta: IndexedSeq[Matrix] = SparseMatrix.zeros(ROWS/WORKERS/SUPERVISORS, COLS).colSlice(WORKERS*SUPERVISORS)
   var data: IndexedSeq[Matrix] = null
+  var written: Boolean = false
 
   def calcObj(right: Matrix, data: Matrix, delta: Matrix, getObj: Boolean): Option[Double] = if (getObj) {
     val deltaUD = new ScalafishUpdater(left, right, data)
@@ -268,6 +316,10 @@ class Worker extends Actor {
       // Send back the result
       // if (worker.id == 0) println("left: " + left)
       sender ! DoneStep(worker, step, part, right, calcObj(right, data(part.id), delta(part.id), getObj))
+
+    case Write(part, w) =>
+      if(!written) { w.write(left); written = true }
+      sender ! Written(part)
   }
 
   def doStep(data: Matrix, delta: Matrix, right: Matrix, mu: Float, alpha: Float): Unit = {

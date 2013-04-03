@@ -49,9 +49,7 @@ trait MatrixWriter {
 
 class PrintWriter(override val rows: Int, override val cols: Int) extends MatrixWriter {
   def write(m: Matrix) = {
-    require(m.rows == rows, "Rows don't match %d != %d".format(m.rows, rows))
-    require(m.cols == cols, "Cols don't match %d != %d".format(m.cols, cols))
-    println(m)
+    println("rows: %d, cols: %d".format(m.rows, m.cols))
   }
-  def rowPartition(parts: Int) = sys.error("Not yet implemented")
+  def rowPartition(parts: Int) = (0 until parts).map { _ => new PrintWriter(-1, -1) }
 }
