@@ -16,18 +16,19 @@ case class PartitionId(id: Int) extends Serializable
 
 /*
  * Messages sent between Master <-> Supervisor <-> Worker
+ * We use this marker trait to register a serializer with Akka
  */
-case class Start(loader: MatrixLoader, lwriter: MatrixWriter, rwriter: MatrixWriter)
-  extends Serializable
-case class Load(supervisor: SupervisorId, loader: MatrixLoader) extends Serializable
-case class Loaded(supervisor: SupervisorId) extends Serializable
-case class RunStep(step: StepId, part: PartitionId, worker: WorkerId, data: Matrix, getObj: Boolean) extends Serializable {
+trait Message
+case class Start(loader: MatrixLoader, lwriter: MatrixWriter, rwriter: MatrixWriter) extends Message
+case class Load(supervisor: SupervisorId, loader: MatrixLoader) extends Message
+case class Loaded(supervisor: SupervisorId) extends Message
+case class RunStep(step: StepId, part: PartitionId, worker: WorkerId, data: Matrix, getObj: Boolean) extends Message {
   def alpha: Float = (Distributed2.ALPHA / (step.id + 1)).toFloat
 }
 case class DoneStep(worker: WorkerId, step: StepId, part: PartitionId, right: Matrix, objOpt:
-Option[Double]) extends Serializable
-case class InitializeData(workerId: WorkerId, sparseMatrix: Matrix) extends Serializable
-case class Initialized(worker: WorkerId) extends Serializable
-case class Write(part: PartitionId, writer: MatrixWriter) extends Serializable
-case class Written(part: PartitionId) extends Serializable
+Option[Double]) extends Message
+case class InitializeData(workerId: WorkerId, sparseMatrix: Matrix) extends Message
+case class Initialized(worker: WorkerId) extends Message
+case class Write(part: PartitionId, writer: MatrixWriter) extends Message
+case class Written(part: PartitionId) extends Message
 

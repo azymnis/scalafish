@@ -40,6 +40,8 @@ class SparseMatrix private (override val rows: Int,
     }
   }
 
+  override def nonZeros: Long = hashMap.size.toLong
+
   override def update(idx: Long, f: Float) {
     if( f != 0.0 ) {
       hashMap.put(idx, f)

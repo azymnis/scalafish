@@ -29,11 +29,11 @@ object Distributed2Factorizer extends App {
 object Distributed2 {
   implicit val rng = new java.util.Random
 
-  // val ROWS = 3000
-  // val COLS = 1000
-  val ROWS = 2046
-  val COLS = 10122134
-  val SUPERVISORS = 10
+  val ROWS = 32
+  val COLS = 16
+  //val ROWS = 2046
+  //val COLS = 10122134
+  val SUPERVISORS = 1
   val WORKERS = 4
   val REALRANK = 10
   val FACTORRANK = REALRANK + 5
@@ -43,6 +43,7 @@ object Distributed2 {
   val ITERS = 10
   //val WORKERS = java.lang.Runtime.getRuntime.availableProcessors
 
+  // TODO: Worker update crashes this isn't true:
   // require(ROWS % (SUPERVISORS * WORKERS) == 0, "Rows must be divisable by supervisors")
   // require(COLS % (SUPERVISORS * WORKERS) == 0, "Cols must be divisable by supervisors")
 
@@ -52,7 +53,14 @@ object Distributed2 {
       stdout-loglevel = "DEBUG"
       log-config-on-start = on
       actor.debug.lifecycle = on
+      actor.serializers {
+        kryo = "org.zymnis.scalafish.serialization.KryoAkkaPooled"
+      }
+      actor.serialization-bindings {
+        "org.zymnis.scalafish.distributed2.Message" = kryo
+      }
       actor.provider = "akka.remote.RemoteActorRefProvider"
+      remote.netty.message-frame-size = 10 MiB
       remote.netty.hostname = "%s"
       remote.netty.port = %d
     }
