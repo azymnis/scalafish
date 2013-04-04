@@ -3,8 +3,11 @@ package org.zymnis.scalafish.distributed2
 import akka.actor._
 import akka.dispatch.{Await, ExecutionContext, Future}
 import akka.pattern.ask
+import akka.remote.RemoteScope
 import akka.util.{Duration, Timeout}
 import akka.util.duration._
+
+import com.typesafe.config.{ Config, ConfigFactory }
 
 import scala.util.Random
 
@@ -13,7 +16,7 @@ import org.zymnis.scalafish.ScalafishUpdater
 
 import Syntax._
 
-class Master extends Actor {
+class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
   import Distributed2._
   implicit val rng = new java.util.Random(1)
 
@@ -23,15 +26,20 @@ class Master extends Actor {
   case object HasLoaded extends SupervisorState
   case class Working(step: StepId, part: PartitionId) extends SupervisorState
 
-  val superMap: Map[SupervisorId, ActorRef] = (0 until SUPERVISORS).map { sid =>
-    (SupervisorId(sid), context.actorOf(Props[Supervisor], name = "supervisor_" + sid))
+  val firstSupervisorPort = 2553
+  val superMap: Map[SupervisorId, ActorRef] = (0 until nSupervisors).map { sid =>
+    val address = Address("akka", "SupervisorSystem", "127.0.0.1", firstSupervisorPort + sid)
+    println("Trying to create supervisor at address: %s".format(address))
+    (SupervisorId(sid), context.actorOf(
+      Props[Supervisor].withDeploy(Deploy(scope = RemoteScope(address))),
+      name = "supervisor_" + sid))
   }.toMap
 
-  var supervisors: IndexedSeq[SupervisorState] = IndexedSeq.fill(SUPERVISORS)(Initialized)
+  var supervisors: IndexedSeq[SupervisorState] = IndexedSeq.fill(nSupervisors)(Initialized)
 
   var partitionState: IndexedSeq[(StepId, SupervisorId)] = null
 
-  val updateStrategy: UpdateStrategy = new CyclicUpdates(WORKERS, SUPERVISORS)
+  val updateStrategy: UpdateStrategy = new CyclicUpdates(nWorkers, nSupervisors)
 
   var masterLoader: MatrixLoader = null
   var masterLeftWriter: MatrixWriter = null
@@ -42,13 +50,13 @@ class Master extends Actor {
   var writing: Boolean = false
   var writtenPartitions: Set[PartitionId] = Set[PartitionId]()
 
-  def totalWorkers = SUPERVISORS * WORKERS
+  def totalWorkers = nSupervisors * nWorkers
 
   // don't block forever waiting for messages
   context.setReceiveTimeout(120 seconds)
 
   def genPart: Matrix =
-    DenseMatrix.rand(COLS/SUPERVISORS/WORKERS, FACTORRANK)
+    DenseMatrix.rand(COLS/nSupervisors/nWorkers, FACTORRANK)
 
   def receive = {
     case Start(loader, lwriter, rwriter) =>
@@ -65,6 +73,7 @@ class Master extends Actor {
             case ((loadPart, Initialized), sidx) =>
               val sid = SupervisorId(sidx)
               val actor = superMap(sid)
+              println("Found supervisor %d at %s.".format(sidx, actor))
               actor ! Load(sid, loadPart)
               Loading(loadPart)
             case (part, _) => sys.error("unreachable")
@@ -147,13 +156,30 @@ class Master extends Actor {
       context.system.shutdown()
     }
     else if (allRsFinished) {
-      masterLeftWriter.rowPartition(SUPERVISORS)
+      masterLeftWriter.rowPartition(nSupervisors)
         .view
         .zip(superMap)
         .foreach { case (swriter, (sid, aref)) =>
-          val baseId = PartitionId(sid.id * WORKERS)
+          val baseId = PartitionId(sid.id * nWorkers)
           aref ! Write(baseId, swriter)
         }
     }
   }
+}
+
+object MasterApp {
+  def apply(nSupervisors: Int, nWorkers: Int, host: String, port: Int) = new MasterApp(
+    nSupervisors, nWorkers, Distributed2.getConfig(host, port))
+}
+
+class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config) {
+  val loader = new TestLoader
+  val lwriter = new PrintWriter(-1, -1)
+  val rwriter = new PrintWriter(-1, -1)
+
+  val system = ActorSystem("MasterSystem", config)
+  val master = system.actorOf(
+    Props(new Master(nSupervisors, nWorkers)),
+    name = "master")
+  master ! Start(loader, lwriter, rwriter)
 }

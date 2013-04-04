@@ -3,8 +3,11 @@ package org.zymnis.scalafish.distributed2
 import akka.actor._
 import akka.dispatch.{Await, ExecutionContext, Future}
 import akka.pattern.ask
+import akka.kernel.Bootable
 import akka.util.{Duration, Timeout}
 import akka.util.duration._
+
+import com.typesafe.config.{ Config, ConfigFactory }
 
 import scala.util.Random
 
@@ -66,6 +69,7 @@ class Supervisor extends Actor {
 
   def receive = {
     case Load(idx, loader) =>
+      println("Supervisor %s is loading.".format(self.path))
       load(idx, loader)
       checkIfInited
 
@@ -96,5 +100,20 @@ class Supervisor extends Actor {
     case w: Written => context.parent ! w
     case ReceiveTimeout =>
       waitingMsg.collect { case (wid: WorkerId, msg: InitializeData) => workers(wid.id) ! msg }
+  }
+}
+
+object SupervisorApp {
+  def apply(host: String, port: Int) = new SupervisorApp(Distributed2.getConfig(host, port))
+}
+
+class SupervisorApp(config: Config) extends Bootable {
+  val system = ActorSystem("SupervisorSystem", config)
+
+  def startup() {
+  }
+
+  def shutdown() {
+    system.shutdown()
   }
 }
