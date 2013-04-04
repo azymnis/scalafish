@@ -11,7 +11,7 @@ object FactorizerApp extends App {
 
     val shard = args("shard").toInt
     val host = args("host")
-    val port = args("factorizerPort").toInt
+    val port = args("akkaPort").toInt
 
     println("Starting Factorizer App.")
     if (shard == 0) {
