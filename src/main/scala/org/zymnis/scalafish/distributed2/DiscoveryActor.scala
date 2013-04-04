@@ -12,6 +12,8 @@ import org.json.simple.{ JSONObject, JSONValue }
 
 import org.zymnis.scalafish.zookeeper._
 
+import java.lang.{ Long => JLong }
+
 sealed trait DiscoveryMessage extends Message
 case class UseZookeeper(host: String, port: Int, path: String, count: Int) extends DiscoveryMessage
 case object FindSupervisors extends DiscoveryMessage
@@ -62,8 +64,8 @@ case class DiscoInit(caller: ActorRef, zk: ActorRef, master: ActorRef, path: Str
     println(data)
     val obj = JSONValue.parse(data).asInstanceOf[JSONObject].get("additionalEndpoints").asInstanceOf[JSONObject]
     val host = obj.get("akka").asInstanceOf[JSONObject].get("host").asInstanceOf[String]
-    val akkaPort = obj.get("akka").asInstanceOf[JSONObject].get("port").asInstanceOf[String].toInt
-    val matrixPort = obj.get("matrix").asInstanceOf[JSONObject].get("port").asInstanceOf[String].toInt
+    val akkaPort = obj.get("akka").asInstanceOf[JSONObject].get("port").asInstanceOf[JLong].toInt
+    val matrixPort = obj.get("matrix").asInstanceOf[JSONObject].get("port").asInstanceOf[JLong].toInt
     val hp = HostPorts(host, akkaPort, matrixPort)
     val out = copy(refs = hp :: refs)
     out.announceIfDone { _ => out }
