@@ -48,6 +48,10 @@ object Distributed2 {
 
   def getConfig(host: String, port: Int): Config = {
     val config = ConfigFactory.parseString("""akka {
+      loglevel = "DEBUG"
+      stdout-loglevel = "DEBUG"
+      log-config-on-start = on
+      actor.debug.lifecycle = on
       actor.provider = "akka.remote.RemoteActorRefProvider"
       remote.netty.hostname = "%s"
       remote.netty.port = %d
