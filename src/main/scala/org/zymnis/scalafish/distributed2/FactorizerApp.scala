@@ -17,10 +17,9 @@ object FactorizerApp extends App {
     if (shard == 0) {
       println("Am the MASTER!")
 
+      val nSupervisors = 1
       val nWorkers = 4
-      val supervisorAddresses = Seq(new InetSocketAddress(args("supHost"), args("supPort").toInt))
-
-      MasterApp(supervisorAddresses, nWorkers, host, port)
+      MasterApp(nSupervisors, nWorkers, host, port)
       println("Created the master. Here we go!")
     } else {
       println("Am a supervisor!")

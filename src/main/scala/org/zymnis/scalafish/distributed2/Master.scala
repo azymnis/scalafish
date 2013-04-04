@@ -17,10 +17,10 @@ import org.zymnis.scalafish.ScalafishUpdater
 
 import Syntax._
 
-class Master(supervisorAddresses: Seq[InetSocketAddress], nWorkers: Int) extends Actor {
+class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
   import Distributed2._
   implicit val rng = new java.util.Random(1)
-  val nSupervisors = supervisorAddresses.size
+  val supervisorAddresses = Seq[InetSocketAddress]()
 
   sealed trait SupervisorState
   case object Initialized extends SupervisorState
@@ -29,7 +29,7 @@ class Master(supervisorAddresses: Seq[InetSocketAddress], nWorkers: Int) extends
   case class Working(step: StepId, part: PartitionId) extends SupervisorState
 
   val superMap: Map[SupervisorId, ActorRef] = (for (supervisorId <- (0 until nSupervisors)) yield {
-    val addr = supervisorAddresses(supervisorId)
+    val addr = new InetSocketAddress("127.0.0.1", 2553 + supervisorId)
     val address = Address("akka", "SupervisorSystem", addr.getAddress.getHostAddress, addr.getPort)
 
     val supervisor = context.actorOf(
@@ -172,8 +172,8 @@ class Master(supervisorAddresses: Seq[InetSocketAddress], nWorkers: Int) extends
 }
 
 object MasterApp {
-  def apply(supervisorAddresses: Seq[InetSocketAddress], nWorkers: Int, host: String, port: Int) =
-    new MasterApp(supervisorAddresses, nWorkers, Distributed2.getConfig(host, port))
+  def apply(nSupervisors: Int, nWorkers: Int, host: String, port: Int) =
+    new MasterApp(nSupervisors, nWorkers, Distributed2.getConfig(host, port))
 }
 
 class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config) {
@@ -183,7 +183,7 @@ class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config) {
 
   val system = ActorSystem("MasterSystem", config)
   val master = system.actorOf(
-    Props(new Master(supervisorAddresses, nWorkers)),
+    Props(new Master(nSupervisors, nWorkers)),
     name = "master")
   master ! Start(loader, lwriter, rwriter)
 }
