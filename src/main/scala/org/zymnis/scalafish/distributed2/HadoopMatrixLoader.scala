@@ -27,10 +27,12 @@ import org.zymnis.scalafish.matrix._
 import org.zymnis.scalafish.job._
 
 object FuckleberryFinn extends App {
-  val ret = HadoopMatrixLoader("/Users/sritchie/Desktop/logodds", 10)
+  val ret = HadoopMatrixLoader("/Users/argyris/Downloads/logodds", 10)
   println("FUCKING LOADING")
-  val matrix = ret.rowPartition(10).head.load
-  println(matrix.size)
+  val matrices = ret.rowPartition(10).map { _.load }
+  println("rows: " + matrices.map { _.rows }.sum)
+  println("cols: " + matrices.map { _.cols }.sum)
+  println("size: " + matrices.map { _.size }.sum)
 }
 
 object HadoopMatrixLoader {
