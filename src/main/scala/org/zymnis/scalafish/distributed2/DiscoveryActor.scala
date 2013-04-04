@@ -75,7 +75,7 @@ case class DiscoInit(caller: ActorRef, zk: ActorRef, master: ActorRef, path: Str
 case object Done extends DiscoveryState
 
 class DiscoveryActor extends Actor {
-  context.setReceiveTimeout(500 milliseconds)
+  context.setReceiveTimeout(2 seconds)
 
   var state: DiscoveryState = Born(self)
 
