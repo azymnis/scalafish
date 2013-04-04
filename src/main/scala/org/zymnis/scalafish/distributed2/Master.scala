@@ -173,7 +173,7 @@ object MasterApp {
 }
 
 class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config) {
-  val loader = new TestLoader
+  val loader = HadoopMatrixLoader("/Users/argyris/Downloads/logodds", 10)
   val lwriter = new PrintWriter(-1, -1)
   val rwriter = new PrintWriter(-1, -1)
 
