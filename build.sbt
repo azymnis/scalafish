@@ -1,3 +1,5 @@
+import AssemblyKeys._
+
 name := "scalafish"
 
 version := "0.0.1"
@@ -5,6 +7,14 @@ version := "0.0.1"
 organization := "org.zymnis"
 
 scalaVersion := "2.9.2"
+
+assemblySettings
+
+excludedJars in assembly <<= (fullClasspath in assembly) map { cp =>
+  cp filter { Set("jsp-2.1-6.1.14.jar", "commons-beanutils-1.7.0.jar") contains _.data.getName }
+}
+
+net.virtualvoid.sbt.graph.Plugin.graphSettings
 
 resolvers ++= Seq(
   "snapshots" at "http://oss.sonatype.org/content/repositories/snapshots",
@@ -18,11 +28,21 @@ resolvers ++= Seq(
 )
 
 libraryDependencies ++= Seq(
-  "com.backtype" % "dfs-datastores-cascading" % "1.3.3",
+  "com.backtype" % "dfs-datastores-cascading" % "1.3.3" excludeAll(
+    ExclusionRule(organization = "org.apache.hadoop")
+  ),
   "com.backtype" % "dfs-datastores" % "1.3.1",
-  "com.twitter" %% "scalding-core" % "0.8.4",
-  "com.twitter" %% "scalding-args" % "0.8.4",
-  "com.twitter" %% "scalding-commons" % "0.1.5" exclude("org.apache.thrift", "libthrift"),
+  "com.twitter" %% "scalding-core" % "0.8.4" excludeAll(
+    ExclusionRule(organization = "org.mortbay.jetty")
+  ),
+  "com.twitter" %% "scalding-args" % "0.8.4" excludeAll(
+    ExclusionRule(organization = "org.mortbay.jetty")
+  ),
+  "com.twitter" %% "scalding-commons" % "0.1.5" excludeAll(
+    ExclusionRule(organization = "org.apache.thrift"),
+    ExclusionRule(organization = "org.apache.hadoop"),
+    ExclusionRule(organization = "org.mortbay.jetty")
+  ),
   "com.twitter" %% "bijection-core" % "0.3.0",
   "com.twitter" %% "bijection-json" % "0.3.0",
   "com.twitter" %% "chill" % "0.2.0",
@@ -36,8 +56,21 @@ libraryDependencies ++= Seq(
   "org.apache.zookeeper" % "zookeeper" % "3.4.5" excludeAll(
       ExclusionRule(organization = "com.sun.jdmk"),
       ExclusionRule(organization = "com.sun.jmx"),
-      ExclusionRule(organization = "javax.jms")
+      ExclusionRule(organization = "javax.jms"),
+      ExclusionRule(organization = "org.jboss.netty"),
+      ExclusionRule(organization = "org.mortbay.jetty"),
+      ExclusionRule(organization = "tomcat")
     )
 )
 
 parallelExecution in Test := true
+
+// Some of these files have duplicates, let's ignore:
+mergeStrategy in assembly <<= (mergeStrategy in assembly) { (old) =>
+  {
+    case s if s.endsWith(".class") => MergeStrategy.last
+    case s if s.endsWith("project.clj") => MergeStrategy.concat
+    case s if s.endsWith(".html") => MergeStrategy.last
+    case x => old(x)
+  }
+}
