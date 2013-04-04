@@ -12,7 +12,7 @@ object FactorizerApp extends App {
   println("Starting Factorizer App.")
   if (shard == 0) {
     println("Am the MASTER!")
-    new MasterApp(nSupervisors, nWorkers)
+    MasterApp(nSupervisors, nWorkers, host, port)
     println("Created the master. Here we go!")
   } else {
     println("Am a supervisor!")

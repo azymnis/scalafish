@@ -104,18 +104,7 @@ class Supervisor extends Actor {
 }
 
 object SupervisorApp {
-  def getConfig(host: String, port: Int): Config = {
-    val config = ConfigFactory.parseString("""akka {
-      actor.provider = "akka.remote.RemoteActorRefProvider"
-      remote.netty.hostname = "%s"
-      remote.netty.port = %d
-    }
-    """.format(host, port))
-    println("Config is %s".format(config))
-    config
-  }
-
-  def apply(host: String, port: Int) = new SupervisorApp(getConfig(host, port))
+  def apply(host: String, port: Int) = new SupervisorApp(Distributed2.getConfig(host, port))
 }
 
 class SupervisorApp(config: Config) extends Bootable {

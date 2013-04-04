@@ -6,6 +6,8 @@ import akka.pattern.ask
 import akka.util.{Duration, Timeout}
 import akka.util.duration._
 
+import com.typesafe.config.{ Config, ConfigFactory }
+
 import scala.util.Random
 
 import org.zymnis.scalafish.matrix._
@@ -43,4 +45,15 @@ object Distributed2 {
 
   // require(ROWS % (SUPERVISORS * WORKERS) == 0, "Rows must be divisable by supervisors")
   // require(COLS % (SUPERVISORS * WORKERS) == 0, "Cols must be divisable by supervisors")
+
+  def getConfig(host: String, port: Int): Config = {
+    val config = ConfigFactory.parseString("""akka {
+      actor.provider = "akka.remote.RemoteActorRefProvider"
+      remote.netty.hostname = "%s"
+      remote.netty.port = %d
+    }
+    """.format(host, port))
+    println("Config is %s".format(config))
+    config
+  }
 }

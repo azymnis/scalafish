@@ -29,6 +29,7 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
   val firstSupervisorPort = 2553
   val superMap: Map[SupervisorId, ActorRef] = (0 until nSupervisors).map { sid =>
     val address = Address("akka", "SupervisorSystem", "127.0.0.1", firstSupervisorPort + sid)
+    println("Trying to create supervisor at address: %s".format(address))
     (SupervisorId(sid), context.actorOf(
       Props[Supervisor].withDeploy(Deploy(scope = RemoteScope(address))),
       name = "supervisor_" + sid))
@@ -166,12 +167,17 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
   }
 }
 
-class MasterApp(nSupervisors: Int, nWorkers: Int) {
+object MasterApp {
+  def apply(nSupervisors: Int, nWorkers: Int, host: String, port: Int) = new MasterApp(
+    nSupervisors, nWorkers, Distributed2.getConfig(host, port))
+}
+
+class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config) {
   val loader = new TestLoader
   val lwriter = new PrintWriter(-1, -1)
   val rwriter = new PrintWriter(-1, -1)
 
-  val system = ActorSystem("MasterSystem")
+  val system = ActorSystem("MasterSystem", config)
   val master = system.actorOf(
     Props(new Master(nSupervisors, nWorkers)),
     name = "master")
