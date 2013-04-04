@@ -26,7 +26,7 @@ class DenseMatrix private (override val rows: Int, override val cols: Int, overr
       (blocks, rows_per_block, last_block)
     }
   }
-  private val data = {
+  val data: Array[ByteBuffer] = {
     val ary = new Array[ByteBuffer](blocks)
     var idx = 0
     while(idx < blocks) {
