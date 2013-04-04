@@ -3,8 +3,11 @@ package org.zymnis.scalafish.distributed2
 import akka.actor._
 import akka.dispatch.{Await, ExecutionContext, Future}
 import akka.pattern.ask
+import akka.kernel.Bootable
 import akka.util.{Duration, Timeout}
 import akka.util.duration._
+
+import com.typesafe.config.{ Config, ConfigFactory }
 
 import scala.util.Random
 
@@ -97,5 +100,33 @@ class Supervisor extends Actor {
     case w: Written => context.parent ! w
     case ReceiveTimeout =>
       waitingMsg.collect { case (wid: WorkerId, msg: InitializeData) => workers(wid.id) ! msg }
+  }
+}
+
+object SupervisorApp {
+  def getConfig(host: String, port: Int): Config = {
+    //  remote.transport = "akka.remote.netty.NettyRemoteTransport"
+    val config = ConfigFactory.parseString("""akka {
+      actor.provider = "akka.remote.RemoteActorRefProvider"
+      remote.enabled-transports = ["akka.remote.netty.tcp"]
+      remote.netty.tcp.hostname = "%s"
+      remote.netty.tcp.port = %d
+    }
+    """.format(host, port))
+    println("Config is %s".format(config))
+    config
+  }
+
+  def apply(host: String, port: Int) = new SupervisorApp(getConfig(host, port))
+}
+
+class SupervisorApp(config: Config) extends Bootable {
+  val system = ActorSystem("SupervisorSystem", config)
+
+  def startup() {
+  }
+
+  def shutdown() {
+    system.shutdown()
   }
 }
