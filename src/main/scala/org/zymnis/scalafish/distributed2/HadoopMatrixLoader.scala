@@ -17,7 +17,9 @@ limitations under the License.
 package org.zymnis.scalafish.distributed2
 
 import com.backtype.hadoop.pail.{ PailStructure, Pail }
-import com.twitter.bijection.{Bijection, Bufferable, Injection}
+import com.twitter.bijection.{AbstractInjection, Bijection, Bufferable, Injection}
+import com.twitter.chill.InjectiveSerializer
+import com.esotericsoftware.kryo.{ Serializer => KSerializer }
 import cascading.flow.hadoop.HadoopFlowProcess
 import org.apache.hadoop.mapred.JobConf
 import java.util.{ List => JList,  UUID }
@@ -26,14 +28,28 @@ import scala.collection.JavaConverters._
 import org.zymnis.scalafish.matrix._
 import org.zymnis.scalafish.job._
 
-object FuckleberryFinn extends App {
-  val ret = HadoopMatrixLoader("/Users/sritchie/Desktop/logodds", 10)
-  println("FUCKING LOADING")
-  val matrix = ret.rowPartition(10).head.load
-  println(matrix.size)
-}
+import com.twitter.bijection.Conversion.asMethod
+import scala.util.control.Exception.allCatch
 
 object HadoopMatrixLoader {
+  implicit val toTriple: Injection[HadoopMatrixLoader, (String, Int, Int)] =
+    new AbstractInjection[HadoopMatrixLoader, (String, Int, Int)] {
+      def apply(loader: HadoopMatrixLoader) = (loader.pail.getRoot, loader.rows, loader.cols)
+      def invert(triple: (String, Int, Int)) = {
+        val (root, rows, cols) = triple
+        scala.util.control.Exception.allCatch.opt {
+          val pail = Pail.create(root, new ScalafishPailStructure(), false)
+            .asInstanceOf[Pail[SparseElement]]
+          new HadoopMatrixLoader(pail, rows, cols)
+        }
+      }
+  }
+
+  implicit val toBytes: Injection[HadoopMatrixLoader, Array[Byte]] =
+    toTriple.andThen(Bufferable.injectionOf[(String, Int, Int)])
+
+  val kryoSerializer: KSerializer[HadoopMatrixLoader] = InjectiveSerializer.asKryo
+
   def apply(rootPath: String, shards: Int) = {
     val structure = new ScalafishPailStructure().setShards(shards)
     val pail: Pail[SparseElement] =
@@ -50,7 +66,7 @@ object HadoopMatrixLoader {
   }
 }
 
-class HadoopMatrixLoader(pail: Pail[SparseElement], val rows: Int, val cols: Int)extends MatrixLoader {
+class HadoopMatrixLoader(val pail: Pail[SparseElement], val rows: Int, val cols: Int) extends MatrixLoader {
   val iter: Iterator[SparseElement] =
     pail.iterator().asScala.asInstanceOf[Iterator[SparseElement]]
 
