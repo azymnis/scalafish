@@ -26,7 +26,7 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
   case object HasLoaded extends SupervisorState
   case class Working(step: StepId, part: PartitionId) extends SupervisorState
 
-  val firstSupervisorPort = 2554
+  val firstSupervisorPort = 2553
   val superMap: Map[SupervisorId, ActorRef] = (0 until nSupervisors).map { sid =>
     val address = Address("akka", "SupervisorSystem", "127.0.0.1", firstSupervisorPort + sid)
     (SupervisorId(sid), context.actorOf(
@@ -171,7 +171,7 @@ class MasterApp(nSupervisors: Int, nWorkers: Int) {
   val lwriter = new PrintWriter(-1, -1)
   val rwriter = new PrintWriter(-1, -1)
 
-  val system = ActorSystem("MasterSystem", ConfigFactory.load.getConfig("master"))
+  val system = ActorSystem("MasterSystem")
   val master = system.actorOf(
     Props(new Master(nSupervisors, nWorkers)),
     name = "master")

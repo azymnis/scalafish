@@ -105,12 +105,10 @@ class Supervisor extends Actor {
 
 object SupervisorApp {
   def getConfig(host: String, port: Int): Config = {
-    //  remote.transport = "akka.remote.netty.NettyRemoteTransport"
     val config = ConfigFactory.parseString("""akka {
       actor.provider = "akka.remote.RemoteActorRefProvider"
-      remote.enabled-transports = ["akka.remote.netty.tcp"]
-      remote.netty.tcp.hostname = "%s"
-      remote.netty.tcp.port = %d
+      remote.netty.hostname = "%s"
+      remote.netty.port = %d
     }
     """.format(host, port))
     println("Config is %s".format(config))
