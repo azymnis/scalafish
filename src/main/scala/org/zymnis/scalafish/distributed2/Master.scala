@@ -26,9 +26,9 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
   case object HasLoaded extends SupervisorState
   case class Working(step: StepId, part: PartitionId) extends SupervisorState
 
-  val firstSupervisorPort = 2552
+  val firstSupervisorPort = 2554
   val superMap: Map[SupervisorId, ActorRef] = (0 until nSupervisors).map { sid =>
-    val address = Address("akka.tcp", "SupervisorSystem", "127.0.0.1", firstSupervisorPort + sid)
+    val address = Address("akka", "SupervisorSystem", "127.0.0.1", firstSupervisorPort + sid)
     (SupervisorId(sid), context.actorOf(
       Props[Supervisor].withDeploy(Deploy(scope = RemoteScope(address))),
       name = "supervisor_" + sid))
@@ -72,6 +72,7 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
             case ((loadPart, Initialized), sidx) =>
               val sid = SupervisorId(sidx)
               val actor = superMap(sid)
+              println("Found supervisor %d at %s.".format(sidx, actor))
               actor ! Load(sid, loadPart)
               Loading(loadPart)
             case (part, _) => sys.error("unreachable")
