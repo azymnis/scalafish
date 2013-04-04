@@ -26,6 +26,8 @@ class Supervisor extends Actor {
   var supervisorIdx: SupervisorId = null
   var initialized = false
 
+  var matrixPort = 0
+
   var waitingMsg: Map[WorkerId, AnyRef] = Map.empty[WorkerId, AnyRef]
 
   val workers: IndexedSeq[ActorRef] = (0 until WORKERS).map { ind =>
@@ -68,6 +70,8 @@ class Supervisor extends Actor {
   }
 
   def receive = {
+    case SetMatrixPort(port) => matrixPort = port
+
     case Load(idx, loader) =>
       println("Supervisor %s is loading.".format(self.path))
       load(idx, loader)

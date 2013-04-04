@@ -17,7 +17,7 @@ import org.zymnis.scalafish.ScalafishUpdater
 
 import Syntax._
 
-class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
+class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPath: String) extends Actor {
   import Distributed2._
   implicit val rng = new java.util.Random(1)
   val supervisorAddresses = Seq[InetSocketAddress]()
@@ -28,16 +28,11 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
   case object HasLoaded extends SupervisorState
   case class Working(step: StepId, part: PartitionId) extends SupervisorState
 
-  val superMap: Map[SupervisorId, ActorRef] = (for (supervisorId <- (0 until nSupervisors)) yield {
-    val addr = new InetSocketAddress("127.0.0.1", 2553 + supervisorId)
-    val address = Address("akka", "SupervisorSystem", addr.getAddress.getHostAddress, addr.getPort)
+  var started: Boolean = false
 
-    val supervisor = context.actorOf(
-      Props[Supervisor].withDeploy(Deploy(scope = RemoteScope(address))),
-      name = "supervisor_" + supervisorId)
+  val discoActor = context.actorOf(Props(new DiscoveryActor()))
 
-    (SupervisorId(supervisorId), supervisor)
-  }).toMap
+  var superMap: Map[SupervisorId, ActorRef] = Map.empty
 
   var supervisors: IndexedSeq[SupervisorState] = IndexedSeq.fill(nSupervisors)(Initialized)
 
@@ -64,12 +59,33 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
 
   def receive = {
     case Start(loader, lwriter, rwriter) =>
-      if(masterLoader == null) {
+      masterLoader = loader
+      masterLeftWriter = lwriter
+      masterRightWriter = rwriter
+      discoActor ! UseZookeeper(zkHost, zkPort, zkPath, nSupervisors + 1)
+
+    case AnnounceSupervisors(found) =>
+      superMap =
+        (for {
+          hp <- found if hp.shard != 0
+        } yield {
+          val supervisorId = hp.shard
+          val addr = new InetSocketAddress(hp.host, hp.akkaPort)
+          val address = Address("akka", "SupervisorSystem", addr.getAddress.getHostAddress, addr.getPort)
+
+          val supervisor = context.actorOf(
+            Props[Supervisor].withDeploy(Deploy(scope = RemoteScope(address))),
+            name = "supervisor_" + supervisorId)
+          supervisor ! SetMatrixPort(hp.matrixPort)
+
+          (SupervisorId(supervisorId), supervisor)
+        }).toMap
+
+      if(!started) {
+        started = true
         println("sending message to load data")
-        masterLoader = loader
-        masterLeftWriter = lwriter
-        masterRightWriter = rwriter
-        supervisors = loader.rowPartition(supervisors.size)
+
+        supervisors = masterLoader.rowPartition(supervisors.size)
           .view
           .zip(supervisors)
           .zipWithIndex
@@ -172,18 +188,18 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
 }
 
 object MasterApp {
-  def apply(nSupervisors: Int, nWorkers: Int, host: String, port: Int) =
-    new MasterApp(nSupervisors, nWorkers, Distributed2.getConfig(host, port))
+  def apply(nSupervisors: Int, nWorkers: Int, host: String, port: Int, zkHost: String, zkPort: Int, zkPath: String) =
+    new MasterApp(nSupervisors, nWorkers, Distributed2.getConfig(host, port), zkHost, zkPort, zkPath)
 }
 
-class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config) {
+class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config, zkHost: String, zkPort: Int, zkPath: String) {
   val loader = HadoopMatrixLoader("/Users/argyris/Downloads/logodds", 10)
   val lwriter = new PrintWriter(-1, -1)
   val rwriter = new PrintWriter(-1, -1)
 
   val system = ActorSystem("MasterSystem", config)
   val master = system.actorOf(
-    Props(new Master(nSupervisors, nWorkers)),
+    Props(new Master(nSupervisors, nWorkers, zkHost, zkPort, zkPath)),
     name = "master")
   master ! Start(loader, lwriter, rwriter)
 }

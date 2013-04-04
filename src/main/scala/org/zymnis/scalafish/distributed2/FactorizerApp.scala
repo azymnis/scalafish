@@ -12,6 +12,9 @@ object FactorizerApp extends App {
     val shard = args("shard").toInt
     val host = args("host")
     val port = args("akkaPort").toInt
+    val zkHost = args("zkHost")
+    val zkPort = args("zkPort").toInt
+    val zkPath = args("zkPath")
 
     println("Starting Factorizer App.")
     if (shard == 0) {
@@ -19,7 +22,7 @@ object FactorizerApp extends App {
 
       val nSupervisors = 1
       val nWorkers = 4
-      MasterApp(nSupervisors, nWorkers, host, port)
+      MasterApp(nSupervisors, nWorkers, host, port, zkHost, zkPort, zkPath)
       println("Created the master. Here we go!")
     } else {
       println("Am a supervisor!")

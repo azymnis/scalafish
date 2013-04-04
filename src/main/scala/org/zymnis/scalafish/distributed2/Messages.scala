@@ -31,4 +31,4 @@ case class InitializeData(workerId: WorkerId, sparseMatrix: Matrix) extends Mess
 case class Initialized(worker: WorkerId) extends Message
 case class Write(part: PartitionId, writer: MatrixWriter) extends Message
 case class Written(part: PartitionId) extends Message
-
+case class SetMatrixPort(port: Int) extends Message

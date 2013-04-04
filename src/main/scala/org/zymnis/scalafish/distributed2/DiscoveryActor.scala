@@ -22,7 +22,7 @@ case class ReceiveData(data: String) extends DiscoveryMessage
 
 case class AnnounceSupervisors(found: List[HostPorts]) extends Message
 
-case class HostPorts(host: String, akkaPort: Int, matrixPort: Int)
+case class HostPorts(shard: Int, host: String, akkaPort: Int, matrixPort: Int)
 
 sealed trait DiscoveryState { self =>
   def handle(msg: DiscoveryMessage, ref: ActorRef, system: ActorContext): DiscoveryState = {
@@ -62,11 +62,13 @@ case class DiscoInit(caller: ActorRef, zk: ActorRef, master: ActorRef, path: Str
 
   def receiveData(data: String): DiscoveryState = {
     println(data)
-    val obj = JSONValue.parse(data).asInstanceOf[JSONObject].get("additionalEndpoints").asInstanceOf[JSONObject]
+    val jobj = JSONValue.parse(data).asInstanceOf[JSONObject]
+    val obj = jobj.get("additionalEndpoints").asInstanceOf[JSONObject]
     val host = obj.get("akka").asInstanceOf[JSONObject].get("host").asInstanceOf[String]
     val akkaPort = obj.get("akka").asInstanceOf[JSONObject].get("port").asInstanceOf[JLong].toInt
     val matrixPort = obj.get("matrix").asInstanceOf[JSONObject].get("port").asInstanceOf[JLong].toInt
-    val hp = HostPorts(host, akkaPort, matrixPort)
+    val shard = jobj.get("shard").asInstanceOf[JLong].toInt
+    val hp = HostPorts(shard, host, akkaPort, matrixPort)
     val out = copy(refs = hp :: refs)
     out.announceIfDone { _ => out }
   }
