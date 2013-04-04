@@ -29,11 +29,11 @@ object Distributed2Factorizer extends App {
 object Distributed2 {
   implicit val rng = new java.util.Random
 
-  // val ROWS = 32
-  // val COLS = 16
-  val ROWS = 2046
-  val COLS = 10122134
-  val SUPERVISORS = 1
+  val ROWS = 32
+  val COLS = 16
+  // val ROWS = 2046
+  // val COLS = 10122134
+  val SUPERVISORS = 2
   val WORKERS = 4
   val REALRANK = 10
   val FACTORRANK = REALRANK + 5
