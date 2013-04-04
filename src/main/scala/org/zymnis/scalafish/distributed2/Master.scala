@@ -9,6 +9,7 @@ import akka.util.duration._
 
 import com.typesafe.config.{ Config, ConfigFactory }
 
+import java.net.InetSocketAddress
 import scala.util.Random
 
 import org.zymnis.scalafish.matrix._
@@ -16,9 +17,10 @@ import org.zymnis.scalafish.ScalafishUpdater
 
 import Syntax._
 
-class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
+class Master(supervisorAddresses: Seq[InetSocketAddress], nWorkers: Int) extends Actor {
   import Distributed2._
   implicit val rng = new java.util.Random(1)
+  val nSupervisors = supervisorAddresses.size
 
   sealed trait SupervisorState
   case object Initialized extends SupervisorState
@@ -26,14 +28,16 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
   case object HasLoaded extends SupervisorState
   case class Working(step: StepId, part: PartitionId) extends SupervisorState
 
-  val firstSupervisorPort = 2553
-  val superMap: Map[SupervisorId, ActorRef] = (0 until nSupervisors).map { sid =>
-    val address = Address("akka", "SupervisorSystem", "127.0.0.1", firstSupervisorPort + sid)
-    println("Trying to create supervisor at address: %s".format(address))
-    (SupervisorId(sid), context.actorOf(
+  val superMap: Map[SupervisorId, ActorRef] = (for (supervisorId <- (0 until nSupervisors)) yield {
+    val addr = supervisorAddresses(supervisorId)
+    val address = Address("akka", "SupervisorSystem", addr.getAddress.getHostAddress, addr.getPort)
+
+    val supervisor = context.actorOf(
       Props[Supervisor].withDeploy(Deploy(scope = RemoteScope(address))),
-      name = "supervisor_" + sid))
-  }.toMap
+      name = "supervisor_" + supervisorId)
+
+    (SupervisorId(supervisorId), supervisor)
+  }).toMap
 
   var supervisors: IndexedSeq[SupervisorState] = IndexedSeq.fill(nSupervisors)(Initialized)
 
@@ -168,8 +172,8 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
 }
 
 object MasterApp {
-  def apply(nSupervisors: Int, nWorkers: Int, host: String, port: Int) = new MasterApp(
-    nSupervisors, nWorkers, Distributed2.getConfig(host, port))
+  def apply(supervisorAddresses: Seq[InetSocketAddress], nWorkers: Int, host: String, port: Int) =
+    new MasterApp(supervisorAddresses, nWorkers, Distributed2.getConfig(host, port))
 }
 
 class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config) {
@@ -179,7 +183,7 @@ class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config) {
 
   val system = ActorSystem("MasterSystem", config)
   val master = system.actorOf(
-    Props(new Master(nSupervisors, nWorkers)),
+    Props(new Master(supervisorAddresses, nWorkers)),
     name = "master")
   master ! Start(loader, lwriter, rwriter)
 }
