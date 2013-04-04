@@ -81,6 +81,8 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
           (SupervisorId(supervisorId), supervisor)
         }).toMap
 
+      context.stop(discoActor)
+
       if(!started) {
         started = true
         println("sending message to load data")
@@ -193,7 +195,8 @@ object MasterApp {
 }
 
 class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config, zkHost: String, zkPort: Int, zkPath: String) {
-  val loader = HadoopMatrixLoader("/Users/argyris/Downloads/logodds", 10)
+  // val loader = HadoopMatrixLoader("/Users/argyris/Downloads/logodds", 10)
+  val loader = new TestLoader
   val lwriter = new PrintWriter(-1, -1)
   val rwriter = new PrintWriter(-1, -1)
 
