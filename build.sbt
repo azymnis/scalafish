@@ -33,10 +33,16 @@ libraryDependencies ++= Seq(
   ),
   "com.backtype" % "dfs-datastores" % "1.3.1",
   "com.twitter" %% "scalding-core" % "0.8.4" excludeAll(
-    ExclusionRule(organization = "org.apache.hadoop")
+    ExclusionRule(organization = "org.mortbay.jetty")
   ),
-  "com.twitter" %% "scalding-args" % "0.8.4",
-  "com.twitter" %% "scalding-commons" % "0.1.5" exclude("org.apache.thrift", "libthrift"),
+  "com.twitter" %% "scalding-args" % "0.8.4" excludeAll(
+    ExclusionRule(organization = "org.mortbay.jetty")
+  ),
+  "com.twitter" %% "scalding-commons" % "0.1.5" excludeAll(
+    ExclusionRule(organization = "org.apache.thrift"),
+    ExclusionRule(organization = "org.apache.hadoop"),
+    ExclusionRule(organization = "org.mortbay.jetty")
+  ),
   "com.twitter" %% "bijection-core" % "0.3.0",
   "com.twitter" %% "bijection-json" % "0.3.0",
   "com.twitter" %% "chill" % "0.2.0",
@@ -58,3 +64,13 @@ libraryDependencies ++= Seq(
 )
 
 parallelExecution in Test := true
+
+// Some of these files have duplicates, let's ignore:
+mergeStrategy in assembly <<= (mergeStrategy in assembly) { (old) =>
+  {
+    case s if s.endsWith(".class") => MergeStrategy.last
+    case s if s.endsWith("project.clj") => MergeStrategy.concat
+    case s if s.endsWith(".html") => MergeStrategy.last
+    case x => old(x)
+  }
+}
