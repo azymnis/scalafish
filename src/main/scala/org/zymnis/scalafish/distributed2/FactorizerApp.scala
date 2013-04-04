@@ -20,7 +20,7 @@ object FactorizerApp extends App {
     if (shard == 0) {
       println("Am the MASTER!")
 
-      val nSupervisors = 1
+      val nSupervisors = 2
       val nWorkers = 4
       MasterApp(nSupervisors, nWorkers, host, port, zkHost, zkPort, zkPath)
       println("Created the master. Here we go!")
