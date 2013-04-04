@@ -14,7 +14,7 @@ import org.zymnis.scalafish.ScalafishUpdater
 import Syntax._
 
 object Distributed2Factorizer extends App {
-  val loader = new TestLoader
+  val loader = HadoopMatrixLoader("/Users/argyris/Downloads/logodds", 10)
   val lwriter = new PrintWriter(-1, -1)
   val rwriter = new PrintWriter(-1, -1)
 
@@ -27,9 +27,11 @@ object Distributed2Factorizer extends App {
 object Distributed2 {
   implicit val rng = new java.util.Random
 
-  val ROWS = 3000
-  val COLS = 1000
-  val SUPERVISORS = 2
+  // val ROWS = 3000
+  // val COLS = 1000
+  val ROWS = 2046
+  val COLS = 10122134
+  val SUPERVISORS = 10
   val WORKERS = 4
   val REALRANK = 10
   val FACTORRANK = REALRANK + 5
@@ -39,6 +41,6 @@ object Distributed2 {
   val ITERS = 10
   //val WORKERS = java.lang.Runtime.getRuntime.availableProcessors
 
-  require(ROWS % (SUPERVISORS * WORKERS) == 0, "Rows must be divisable by supervisors")
-  require(COLS % (SUPERVISORS * WORKERS) == 0, "Cols must be divisable by supervisors")
+  // require(ROWS % (SUPERVISORS * WORKERS) == 0, "Rows must be divisable by supervisors")
+  // require(COLS % (SUPERVISORS * WORKERS) == 0, "Cols must be divisable by supervisors")
 }

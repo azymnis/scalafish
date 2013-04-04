@@ -31,6 +31,15 @@ import org.zymnis.scalafish.job._
 import com.twitter.bijection.Conversion.asMethod
 import scala.util.control.Exception.allCatch
 
+object FuckleberryFinn extends App {
+  val ret = HadoopMatrixLoader("/Users/argyris/Downloads/logodds", 10)
+  println("FUCKING LOADING")
+  val matrices = ret.rowPartition(10).map { _.load }
+  println("rows: " + matrices.map { _.rows }.sum)
+  println("cols: " + matrices.map { _.cols }.sum)
+  println("size: " + matrices.map { _.size }.sum)
+}
+
 object HadoopMatrixLoader {
   implicit val toTriple: Injection[HadoopMatrixLoader, (String, Int, Int)] =
     new AbstractInjection[HadoopMatrixLoader, (String, Int, Int)] {
