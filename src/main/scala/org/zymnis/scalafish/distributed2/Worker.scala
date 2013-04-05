@@ -18,8 +18,8 @@ class Worker extends Actor with ActorLogging {
   implicit val rng = new java.util.Random(3)
 
   val left: Matrix = DenseMatrix.rand(ROWS / SUPERVISORS / WORKERS, FACTORRANK)
-  val delta: IndexedSeq[Matrix] = SparseMatrix.zeros(ROWS/WORKERS/SUPERVISORS, COLS).colSlice(WORKERS*SUPERVISORS)
-  var data: IndexedSeq[Matrix] = null
+  val delta: IndexedSeq[SparseMatrix] = SparseMatrix.zeros(ROWS/WORKERS/SUPERVISORS, COLS).colSlice(WORKERS*SUPERVISORS)
+  var data: IndexedSeq[SparseMatrix] = null
   var written: Boolean = false
 
   def calcObj(right: Matrix, data: Matrix, delta: Matrix, getObj: Boolean): Option[Double] = if (getObj) {
@@ -34,7 +34,9 @@ class Worker extends Actor with ActorLogging {
     case InitializeData(worker, sm) =>
       log.info("Initializing data for worker: " + worker.id)
       if (data == null) {
-        data = sm.colSlice(SUPERVISORS * WORKERS)
+        val sparseSm = SparseMatrix.zeros(sm.rows, sm.cols)
+        sparseSm := sm
+        data = sparseSm.colSlice(SUPERVISORS * WORKERS)
       }
       sender ! Initialized(worker)
 
@@ -58,23 +60,28 @@ class Worker extends Actor with ActorLogging {
     val deltaUD = new ScalafishUpdater(left, right, data)
 
     delta := deltaUD
-    delta *= alpha
-
     log.info("Done with delta update.")
 
+    delta *= alpha
+    log.info("Done with delta alpha multiplication.")
+
     left *= (1.0f - mu * alpha)
+    log.info("Done with left scaling multiplication.")
+
     left -= delta * right
 
     log.info("Done with left update.")
 
     delta := deltaUD
-    delta *= alpha
+    log.info("Done with delta update 2.")
 
-    log.info("Done with delta update.")
+    delta *= alpha
+    log.info("Done with delta alpha 2 multiplication.")
 
     right *= (1.0f - mu * alpha)
-    right -= delta.t * left
+    log.info("Done with right scaling multiplication.")
 
+    right -= delta.t * left
     log.info("Done with right update.")
   }
 }

@@ -16,29 +16,46 @@ class SparseMatrix private (override val rows: Int,
   override def apply(idx: Long): Float = hashMap.get(idx)
 
   // Returns a view with min inclusive, but max exclusive bounds
-  override def blockView(rowMin: Int, colMin: Int, rowMax: Int, colMax: Int): Matrix = {
+  // TODO: fix this crap
+  override def blockView(rowMin: Int, colMin: Int, rowMax: Int, colMax: Int): SparseMatrix = {
     val thisRows = rowMax - rowMin
     val thisCols = colMax - colMin
     val thisSize = thisRows.toLong * thisCols.toLong
-    if (thisSize < hashMap.size) {
-      //Better off doing the dense version:
-      super.blockView(rowMin, colMin, rowMax, colMax)
+    val out = SparseMatrix.zeros(thisRows, thisCols)
+    val innerIter = self.denseIndices.filter(
+      new LongPredicate { def apply(l: Long) = {
+        val r = self.indexer.row(l) - rowMin
+        val c = self.indexer.col(l) - colMin
+        (0 <= r && r < thisRows) && (0 <= c && c < thisCols)
+      }
+    })
+    while (innerIter.hasNext) {
+      val idx = innerIter.next
+      val r = self.indexer.row(idx) - rowMin
+      val c = self.indexer.col(idx) - colMin
+      out.update(r, c, self.apply(idx))
     }
-    else new Matrix {
-      override val rows = thisRows
-      override val cols = thisCols
-      val indexer = Indexer.rowMajor(cols)
-      override def apply(row: Int, col: Int) = self.apply(row + rowMin, col + colMin)
-      override def update(row: Int, col: Int, f: Float) = self.update(row + rowMin, col + colMin, f)
-      override def denseIndices = self.denseIndices.filter(
-        new LongPredicate { def apply(l: Long) = {
-          val r = self.indexer.row(l) - rowMin
-          val c = self.indexer.col(l) - colMin
-          (0 <= r && r < rows) && (0 <= c && c < cols)
-        }
-      })
-    }
+    out
   }
+
+  // TODO: fix this crap
+  override def t: SparseMatrix = {
+    val out = SparseMatrix.zeros(self.cols, self.rows)
+    val innerIter = self.denseIndices
+    while (innerIter.hasNext) {
+      val idx = innerIter.next
+      val r = self.indexer.row(idx)
+      val c = self.indexer.col(idx)
+      out.update(c, r, self.apply(idx))
+    }
+    out
+  }
+
+  override def rowSlice(numSlices: Int): IndexedSeq[SparseMatrix] =
+    super.rowSlice(numSlices).asInstanceOf[IndexedSeq[SparseMatrix]]
+
+  override def colSlice(numSlices: Int): IndexedSeq[SparseMatrix] =
+    super.colSlice(numSlices).asInstanceOf[IndexedSeq[SparseMatrix]]
 
   override def nonZeros: Long = hashMap.size.toLong
 
