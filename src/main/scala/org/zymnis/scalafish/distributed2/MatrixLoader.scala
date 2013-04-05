@@ -18,14 +18,19 @@ object MatrixLoader {
   }
 }
 
-class TestLoader extends MatrixLoader {
+class TestLoader extends MatrixLoader { self =>
   import Distributed2._
-  def real: Matrix = DenseMatrix.randLowRank(ROWS, COLS, REALRANK)
-  lazy val load: Matrix = SparseMatrix.sample(DENSITY, real)
+
+  lazy val load: Matrix = {
+    val sm = SparseMatrix.zeros(rows, cols)
+    sm := MatrixUpdater.randDensity(DENSITY)
+  }
 
   def rows = ROWS
   def cols = COLS
-  def rowPartition(parts: Int) = load.rowSlice(parts).map { MatrixLoader.from(_) }
+  def rowPartition(parts: Int) = (0 until parts).map { _ => new TestLoader {
+    override def rows = self.rows/parts
+  }}
 }
 
 class FileLoader(override val rows: Int, override val cols: Int, fileName: String)

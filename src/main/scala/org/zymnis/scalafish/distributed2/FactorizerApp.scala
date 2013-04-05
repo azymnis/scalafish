@@ -22,8 +22,9 @@ object FactorizerApp extends App {
     if (shard == 0) {
       println("Am the MASTER!")
 
-      val nSupervisors = 10
-      val nWorkers = 4
+      // TODO Supervisors should be configged in the mesos deploy
+      val nSupervisors = Distributed2.SUPERVISORS
+      val nWorkers = Distributed2.WORKERS
       val matAd = new InetSocketAddress(host, matPort)
       MasterApp(dataPath, nSupervisors, nWorkers, host, port, zkHost, zkPort, zkPath, matAd)
       println("Created the master. Here we go!")

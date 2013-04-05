@@ -200,7 +200,10 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
     }
   }
 
-  def allRsFinished: Boolean = partitionState.forall { _._1.id >= ITERS }
+  def allRsFinished: Boolean =
+    Option(partitionState)
+      .map { _.forall { _._1.id >= ITERS } }
+      .getOrElse(false)
 
   def checkTermination {
     if(writtenPartitions.size == totalWorkers) {

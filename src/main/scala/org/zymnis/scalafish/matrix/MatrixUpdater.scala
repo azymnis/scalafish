@@ -1,5 +1,7 @@
 package org.zymnis.scalafish.matrix
 
+import scala.annotation.tailrec
+
 trait Shaped {
   def rows: Int
   def cols: Int
@@ -70,6 +72,59 @@ object MatrixUpdater {
           rowIdx += 1
         }
         colIdx += 1
+      }
+    }
+  }
+
+  // Assumes an initially empty matrix
+  def randDensity(prob: Double): MatrixUpdater = new MatrixUpdater {
+    import Syntax._
+    def update(m: Matrix) {
+      val positions = m.size
+      @tailrec
+      def randomize(dense: Int = 0): Unit = {
+        if(dense > (positions * prob)) ()
+        else {
+          val randpos = scala.math.min((positions * scala.math.random).toLong,
+            positions - 1L)
+          if(m(randpos) == 0.0f) {
+            m(randpos) = scala.math.random.toFloat
+            randomize(dense + 1)
+          }
+          else {
+            randomize(dense)
+          }
+        }
+      }
+    }
+  }
+
+  def randRank(rank: Int, prob: Double = 1.0): MatrixUpdater = new MatrixUpdater {
+    import Syntax._
+
+    def update(m: Matrix) {
+      val cols = m.cols
+      val rows = m.rows
+      var rowIdx = 0
+      var colIdx = 0
+      val randRow = DenseMatrix.zeros(1, rank)
+      val scalar = DenseMatrix.zeros(1, 1)
+      val colCache = scala.collection.mutable.Map[Int, Matrix]()
+      while(rowIdx < rows) {
+        colIdx = 0
+        randRow := rand
+        while(colIdx < cols) {
+          val col = colCache.getOrElseUpdate(colIdx, {
+            val randCol = DenseMatrix.zeros(rank, 1)
+            randCol := rand
+          })
+          if (scala.math.random < prob) {
+            scalar := randRow * col
+            m.update(rowIdx, colIdx, scalar(0,0))
+          }
+          colIdx += 1
+        }
+        rowIdx += 1
       }
     }
   }

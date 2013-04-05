@@ -96,15 +96,12 @@ object SocketUtil {
   final def readFully(sock: SocketChan, bb: ByteBuffer): Boolean = {
     val dup = bb.duplicate
     val cnt = sock.read(dup)
-    println("cnt: " + cnt)
-    println("rem: " + dup.remaining)
     if(cnt < 0) false
     else if(dup.remaining > 0) readFully(sock, dup)
     else true
   }
   @tailrec
   final def writeFully(bb: ByteBuffer, sock: SocketChan): Unit = {
-    println("write: " + bb.remaining)
     val dup = bb.duplicate
     sock.write(dup)
     if(dup.remaining > 0) writeFully(dup, sock) else ()
