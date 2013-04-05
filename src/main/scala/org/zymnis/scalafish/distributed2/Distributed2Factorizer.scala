@@ -85,6 +85,10 @@ object Distributed2 {
         "org.zymnis.scalafish.distributed2.Message" = kryo
       }
       actor.provider = "akka.remote.RemoteActorRefProvider"
+      debug.autoreceive = on
+      debug.receive = on
+      remote.log-sent-messages = on
+      remote.log-received-messages = on
       remote.netty.message-frame-size = 100 MiB
       remote.netty.hostname = "%s"
       remote.netty.port = %d
