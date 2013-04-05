@@ -76,6 +76,7 @@ class Supervisor extends Actor {
 
   def receive = {
     case SetMatrixPort(addr) =>
+      println("received matrix port: " + addr)
       if(rightData != null) { rightData.stop }
       rightData = new SharedMatrices(addr, ROWS, COLS, WORKERS * SUPERVISORS)
       rightData.start

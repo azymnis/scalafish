@@ -16,6 +16,8 @@ import com.twitter.chill.{
 
 import org.zymnis.scalafish.matrix._
 
+import java.net.InetSocketAddress
+
 import KryoImplicits._
 
 /**
@@ -50,6 +52,8 @@ class KryoAkkaPooled(system: ExtendedActorSystem) extends Serializer {
     k.forSubclass[ActorRef](new ActorRefSerializer(system))
     k.forSubclass[Matrix](new MatrixSerializer)
     k.forClass[HadoopMatrixLoader](HadoopMatrixLoader.kryoSerializer)
+    // TODO: make a serializer
+    k.javaForClass[InetSocketAddress]
     k.registerClasses(Seq(classOf[DenseMatrix], classOf[Matrix], classOf[SparseMatrix], classOf[RowMajorMatrix]))
     new KryoBuffer(k)
   }
