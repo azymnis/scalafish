@@ -2,6 +2,7 @@ package org.zymnis.scalafish.job
 
 import com.backtype.hadoop.pail.{PailStructure, Pail}
 import com.twitter.scalding._
+import com.twitter.scalding.commons.source.VersionedKeyValSource
 import commons.source.{CodecPailStructure, PailSource}
 import com.twitter.bijection.{Bijection, Bufferable, Injection}
 import cascading.flow.hadoop.HadoopFlowProcess
@@ -9,92 +10,80 @@ import org.apache.hadoop.mapred.JobConf
 import java.util.{ List => JList,  UUID }
 import org.apache.hadoop.fs.{Path, FileSystem}
 import scala.collection.JavaConverters._
-
-object SparseElement {
-  implicit val toTuple: Bijection[SparseElement, (Int, Int, Float)] =
-    Bijection.build[SparseElement, (Int, Int, Float)]
-    { case SparseElement(row, col, value) => (row, col, value) }
-    { case (row, col, value) => SparseElement(row, col, value) }
-
-  implicit val kOrd: Ordering[SparseElement] =
-    Ordering.by[SparseElement, (Int, Int, Float)](toTuple)
-}
-
-case class SparseElement(row: Int, col: Int, value: Float)
+import scala.util.MurmurHash
 
 object PrepJob {
-  implicit val tripleInjection: Injection[SparseElement, Array[Byte]] =
-    SparseElement.toTuple.andThen(Bufferable.injectionOf[(Int, Int, Float)])
-
-  def shardFn(shards: Int) = { elem: SparseElement => List((elem.row % shards).toString) }
-  def sink(path: String, shards: Int): Source with Mappable[SparseElement] =
-    PailSource.sink(path, shardFn(shards))
+  implicit lazy val setInjection: Injection[Set[Int], Array[Byte]] = Bufferable.injectionOf[Set[Int]]
 }
 
 class PrepJob(args: Args) extends Job(args) {
+  type Row = Int
+  type HashedColumn = Int
+  type HashedRow = Int
+  type Column = Int
+  type Value = Float
+
+  import PrepJob.setInjection
   import TDsl._
 
   val matrixInput = args("input")
+  val columnMod = args("total-columns").toInt
+  val rowMod = args("total-rows").toInt
   val outputPath = args("output")
-  val numShards = args("shards").toInt
+  val mappingPath = args("mapping-path")
+  val rowShards = args("shards").toInt
 
-  val grouped = TypedTsv[(Int, Int, Float)](matrixInput).groupAll
+  lazy val hasher = new MurmurHash[Column](123456789)
 
-  // SparseElement, (originalRowID, compressedIndex)
-  val sortedByRow: TypedPipe[(SparseElement, (Int, Int))] =
-    grouped.sortBy(_._1)
-        .scanLeft((SparseElement(0, 0, 0), (0, 0))) {
-      case ((_, (prev, idx)), (row, col, value)) =>
-        val newIdx = if (row != prev) (idx + 1) else idx
-        (SparseElement(row, col, value), (row, newIdx))
-    }.toTypedPipe.map(_._2)
+  // Row, Column, Value
+  val source = TypedTsv[(Row, Column, Value)](matrixInput)
+    .map { case (col, row, value) => (row, col, value) } // REMOVE, we only have this for our test matrix.
 
-  // SparseElement, (originalColID, compressedColIndex)
-  val sortedByCol: TypedPipe[(SparseElement, (Int, Int))] =
-    grouped.sortBy(_._2)
-        .scanLeft((SparseElement(0, 0, 0), (0, 0))) {
-      case ((_, (prev, idx)), (row, col, value)) =>
-        val newIdx = if (col != prev) (idx + 1) else idx
-        (SparseElement(row, col, value), (col, newIdx))
-    }.toTypedPipe
-        .map(_._2)
+  def mod(a: Int, modulus: Int): Int = {
+    val ret = a % modulus
+    if (ret < 0)
+      ret + modulus
+    else
+      ret
+  }
 
-  // SparseElement,
-  // ((originalRowID, compressedRowIndex), (originalColID, compressedColIndex))
-  val groupedElements: TypedPipe[(SparseElement, ((Int, Int), (Int, Int)))] =
-    sortedByRow.group.withReducers(20)
-        .join(sortedByCol.group)
-        .toTypedPipe
+  def hashMod(i: Int, modulus: Int) = {
+    hasher.reset
+    hasher(i)
+    mod(hasher.hash, modulus)
+  }
 
-  // TODO: Unique these somehow.
+  val processed: TypedPipe[(HashedRow, HashedColumn, Row, Column, Value)] =
+    source.map { case (row, col, value) =>
+        (hashMod(row, rowMod), hashMod(col, columnMod), row, col, value)
+    }
 
-  // ((compressedRowIndex, compressedColIndex), (originalRowIndex, originalColIndex))
-  val rowMapping: TypedPipe[(Int, Int)] =
-    groupedElements.map { case (elem, ((row, compressedRow), (col, compressedCol))) =>
-      (compressedRow, row)
-    }.write(TypedTsv[(Int, Int)](args("row-mapping")))
+  val rowMapping: TypedPipe[(HashedRow, Set[Row])] =
+    processed.map { case (hashedRow, _, row, _, _) => (hashedRow, row) }
+      .group.toSet
+      .write(VersionedKeyValSource[HashedRow, Set[Row]](mappingPath + "/row"))
 
-  val columnMapping: TypedPipe[(Int, Int)] =
-    groupedElements.map { case (elem, ((row, compressedRow), (col, compressedCol))) =>
-      (compressedCol, col)
-    }.write(TypedTsv[(Int, Int)](args("column-mapping")))
+  val colMapping: TypedPipe[(HashedColumn, Set[Column])] =
+    processed.map { case (_, hashedCol, _, col, _) => (hashedCol, col) }
+      .group.toSet
+      .write(VersionedKeyValSource[HashedColumn, Set[Column]](mappingPath + "/col"))
 
-  val output =
-    groupedElements.map { case (elem, ((_, compressedRow), (_, compressedCol))) =>
-      SparseElement(compressedRow, compressedCol, elem.value)
-    }.write(PrepJob.sink(outputPath, numShards))
+  // Write out the final data to a pail at outputPath.
+  val data =
+    processed.map { case (hashedRow, hashedCol, row, col, value) =>
+        ((hashedRow, hashedCol), value)
+    }.group.sum
+      .map { case ((row, col), value) => (row, col, value) }
+      .write(TypedTsv[(Int, Int, Float)](outputPath))
 
+  // Path for writing metadata for transfer.
   val tempPath = "/tmp/scalafish/" + UUID.randomUUID()
-  val fields: cascading.tuple.Fields = ('maxRow, 'maxCol)
+  val fields: cascading.tuple.Fields = ('row)
   val tempSource = SequenceFile(tempPath, fields)
 
-  groupedElements.map { case (elem, ((row, compressedRow), (col, compressedCol))) =>
-    (compressedRow, compressedCol) }
-      .groupAll
-      .max
-      .map { _._2 }
-      .toPipe(fields)
-      .write(tempSource)
+  val numRows = source.map { _._1 }.groupAll.max.map { _._2 }
+    .toPipe(fields)
+    .write(tempSource)
 
   override def next = {
     val conf = new JobConf
@@ -104,9 +93,9 @@ class PrepJob(args: Args) extends Job(args) {
     val coords: Option[Map[String, Int]] =
       iter.asScala.toSeq.headOption.map { tuple =>
         Map(
-          "row" -> tuple.getInteger("maxRow"),
-          "col" -> tuple.getInteger("maxCol"),
-          "shards" -> numShards
+          "row" -> tuple.getInteger("row"),
+          "col" -> columnMod,
+          "shards" -> rowShards
         )
       }
     iter.close()
