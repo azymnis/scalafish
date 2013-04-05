@@ -27,6 +27,12 @@ class SparseMatrix private (override val rows: Int,
         val c = this.indexer.col(idx) + colMin
         self.mapIdx(self.indexer.rowCol(r,c))
       }
+      override def invMapIdx(idx: Long): Long = {
+        val selfInv = self.invMapIdx(idx)
+        val r = this.indexer.row(selfInv) - rowMin
+        val c = this.indexer.col(selfInv) - colMin
+        this.indexer.rowCol(r,c)
+      }
       override def denseIndices = self.denseIndices.filter(
         new LongPredicate { def apply(l: Long) = {
           val r = self.indexer.row(l) - rowMin
@@ -52,10 +58,17 @@ class SparseMatrix private (override val rows: Int,
       val c = self.indexer.col(idx)
       self.mapIdx(self.indexer.rowCol(c, r))
     }
+    override def invMapIdx(idx: Long) = {
+      val invIdx = self.invMapIdx(idx)
+      val r = self.indexer.row(idx)
+      val c = self.indexer.col(idx)
+      self.indexer.rowCol(c, r)
+    }
     override def t = self
   }
 
   protected def mapIdx(idx: Long): Long = idx
+  protected def invMapIdx(idx: Long): Long = idx
 
   override def rowSlice(numSlices: Int): IndexedSeq[SparseMatrix] =
     super.rowSlice(numSlices).asInstanceOf[IndexedSeq[SparseMatrix]]
@@ -82,7 +95,7 @@ class SparseMatrix private (override val rows: Int,
   override def denseIndices: LongIterator = new LongIterator {
     val lit = hashMap.keySet.iterator
     def hasNext = lit.hasNext
-    def next = mapIdx(lit.nextLong)
+    def next = invMapIdx(lit.nextLong)
   }
 }
 
