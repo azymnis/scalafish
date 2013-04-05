@@ -47,7 +47,7 @@ object Distributed2 {
   val ROWS = 100000000
   val COLS = 60000
   val SUPERVISORS = 10
-  val WORKERS = 4
+  val WORKERS = 10
   val REALRANK = 10
   val FACTORRANK = 100
   val DENSITY = 0.1

@@ -31,7 +31,9 @@ class PrepJob(args: Args) extends Job(args) {
   val rowMod = args("total-rows").toInt
   val outputPath = args("output")
   val mappingPath = args("mapping-path")
-  val rowShards = args("shards").toInt
+  val supervisors = args("supervisors").toInt
+  val workers = args("workers").toInt
+  val rowShards = supervisors * workers
 
   lazy val hasher = new MurmurHash[Column](123456789)
 
@@ -58,15 +60,15 @@ class PrepJob(args: Args) extends Job(args) {
         (hashMod(row, rowMod), hashMod(col, columnMod), row, col, value)
     }
 
-  // val rowMapping: TypedPipe[(HashedRow, Set[Row])] =
-  //   processed.map { case (hashedRow, _, row, _, _) => (hashedRow, row) }
-  //     .group.withReducers(20).toSet
-  //     .write(VersionedKeyValSource[HashedRow, Set[Row]](mappingPath + "/row"))
+  val rowMapping: TypedPipe[(HashedRow, Set[Row])] =
+    processed.map { case (hashedRow, _, row, _, _) => (hashedRow, row) }
+      .group.withReducers(20).toSet
+      .write(VersionedKeyValSource[HashedRow, Set[Row]](mappingPath + "/row"))
 
-  // val colMapping: TypedPipe[(HashedColumn, Set[Column])] =
-  //   processed.map { case (_, hashedCol, _, col, _) => (hashedCol, col) }
-  //     .group.withReducers(20).toSet
-  //     .write(VersionedKeyValSource[HashedColumn, Set[Column]](mappingPath + "/col"))
+  val colMapping: TypedPipe[(HashedColumn, Set[Column])] =
+    processed.map { case (_, hashedCol, _, col, _) => (hashedCol, col) }
+      .group.withReducers(20).toSet
+      .write(VersionedKeyValSource[HashedColumn, Set[Column]](mappingPath + "/col"))
 
   // Write out the final data to a pail at outputPath.
   val data =
@@ -75,10 +77,15 @@ class PrepJob(args: Args) extends Job(args) {
     }.group.withReducers(20).sum
       .map { case ((row, col), value) => (row, col, value) }
 
-  (0 until rowShards).foreach { sid =>
+  for {
+    sup <- (0 until supervisors)
+    work <- (0 until workers)
+  } {
     data
-      .filter { _._1 % rowShards == sid }
-      .write(TypedTsv[(Int, Int, Float)](outputPath + "/" + sid))
+      .filter { _._1 % (supervisors * workers) == sup * work }
+      .groupAll
+      .values
+      .write(TypedTsv[(Int, Int, Float)](outputPath + "/" + sup + "/" + work))
   }
 
   // Path for writing metadata for transfer.
