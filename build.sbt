@@ -33,7 +33,8 @@ libraryDependencies ++= Seq(
   ),
   "com.backtype" % "dfs-datastores" % "1.3.1",
   "com.twitter" %% "scalding-core" % "0.8.4" excludeAll(
-    ExclusionRule(organization = "org.mortbay.jetty")
+    ExclusionRule(organization = "org.mortbay.jetty"),
+    ExclusionRule(organization = "org.apache", name = "hadoop")
   ),
   "com.twitter" %% "scalding-args" % "0.8.4" excludeAll(
     ExclusionRule(organization = "org.mortbay.jetty")
@@ -64,6 +65,13 @@ libraryDependencies ++= Seq(
 )
 
 parallelExecution in Test := true
+
+excludedJars in assembly <<= (fullClasspath in assembly) map { cp =>
+  val excludes = Set("jsp-api-2.1-6.1.14.jar", "jsp-2.1-6.1.14.jar",
+                     "jasper-compiler-5.5.12.jar", "janino-2.5.16.jar",
+                     "hadoop-core-0.20.2.jar")
+  cp filter { jar => excludes(jar.data.getName) }
+}
 
 // Some of these files have duplicates, let's ignore:
 mergeStrategy in assembly <<= (mergeStrategy in assembly) { (old) =>
