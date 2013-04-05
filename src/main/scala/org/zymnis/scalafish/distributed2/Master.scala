@@ -70,8 +70,7 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
           hp <- found if hp.shard != 0
         } yield {
           val supervisorId = hp.shard - 1
-          val addr = new InetSocketAddress(hp.host, hp.akkaPort)
-          val address = Address("akka", "SupervisorSystem", addr.getAddress.getHostAddress, addr.getPort)
+          val address = Address("akka", "SupervisorSystem", hp.host, hp.akkaPort)
 
           val supervisor = context.actorOf(
             Props[Supervisor].withDeploy(Deploy(scope = RemoteScope(address))),
