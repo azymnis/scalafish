@@ -39,6 +39,11 @@ class Worker extends Actor {
       sender ! Initialized(worker)
 
     case rs @ RunStepLocal(step, part, worker, right, getObj) =>
+      println("worker received runstep command: " + step.id)
+      println("partition %d, right matrix size: (%d, %d)".format(part.id, right.rows, right.cols))
+      println("partition %d, left matrix size: (%d, %d)".format(part.id, left.rows, left.cols))
+      println("partition %d, data matrix nonzeros: %d".format(part.id, data.size))
+
       doStep(data(part.id), delta(part.id), right, MU, rs.alpha)
       // Send back the result
       // if (worker.id == 0) println("left: " + left)
@@ -50,18 +55,26 @@ class Worker extends Actor {
   }
 
   def doStep(data: Matrix, delta: Matrix, right: Matrix, mu: Float, alpha: Float): Unit = {
-      val deltaUD = new ScalafishUpdater(left, right, data)
+    val deltaUD = new ScalafishUpdater(left, right, data)
 
-      delta := deltaUD
-      delta *= alpha
+    delta := deltaUD
+    delta *= alpha
 
-      left *= (1.0f - mu * alpha)
-      left -= delta * right
+    println("done with delta update")
 
-      delta := deltaUD
-      delta *= alpha
+    left *= (1.0f - mu * alpha)
+    left -= delta * right
 
-      right *= (1.0f - mu * alpha)
-      right -= delta.t * left
+    println("done with left update")
+
+    delta := deltaUD
+    delta *= alpha
+
+    println("done with delta update")
+
+    right *= (1.0f - mu * alpha)
+    right -= delta.t * left
+
+    println("done with right update")
   }
 }

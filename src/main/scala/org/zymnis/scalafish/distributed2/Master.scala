@@ -141,7 +141,8 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
       }
     case DoneStep(worker, step, part, mat, obj) =>
       // if (part.id == 0) println("right: " + rightData(0))
-      obj.foreach { o => println("step %d, partition %d, OBJ: %4.3f".format(step.id, part.id, o)) }
+      // obj.foreach { o => println("step %d, partition %d, OBJ: %4.3f".format(step.id, part.id, o)) }
+      println("step %d, partition %d".format(step.id, part.id))
       val wasFinished = allRsFinished
       finishStep(step, part, mat)
       checkTermination
@@ -165,7 +166,7 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
     partitionState = (0 until totalWorkers).map { partid =>
       val part = PartitionId(partid)
       val (sid, wid) = fn(part)
-      superMap(sid) ! RunStep(step0, part, wid, rightData.getRef(partid).get, true)
+      superMap(sid) ! RunStep(step0, part, wid, rightData.getRef(partid).get, false)
       supervisors = supervisors.updated(sid.id, Working(step0, part))
       (step0, sid)
     }
@@ -179,7 +180,8 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
     rightData.take(idx).map { dm =>
       val newStep = currentStep.next
       val (sup, work) = updateStrategy.route(newStep)(partition)
-      val getObj = newStep.id % 20 == 0
+      // val getObj = newStep.id % 20 == 0
+      val getObj = false
       // Now send this matrix for it's next step:
       rightStepMap = rightStepMap.updated(partition.id, newStep)
       val newRef = try {

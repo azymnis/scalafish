@@ -42,7 +42,7 @@ object UnshardedHadoopMatrixLoader {
 
     assert(coords.contains("row"))
     assert(coords.contains("col"))
-    new UnshardedHadoopMatrixLoader(rootPath, coords("row"), coords("col"), None)
+    new UnshardedHadoopMatrixLoader(rootPath, coords("row"), coords("col"))
   }
 }
 
@@ -50,22 +50,22 @@ object UnshardedHadoopMatrixLoader {
   * Pred should return true if this particular loader is responsible
   * for that shard in the matrix, false otherwise.
   */
-class UnshardedHadoopMatrixLoader(val path: String, val rows: Int, val cols: Int,
-  shard: Option[Int]) extends MatrixLoader {
+class UnshardedHadoopMatrixLoader(val path: String, val rows: Int, val cols: Int)
+  extends MatrixLoader {
   import Dsl._
 
   override def rowPartition(parts: Int): IndexedSeq[MatrixLoader] = {
     (0 to parts).map { i =>
       val newMaxRows = rows / parts
-      new UnshardedHadoopMatrixLoader(path, newMaxRows, cols, Some(i))
+      new UnshardedHadoopMatrixLoader(path + "/" + i, newMaxRows, cols)
     }.toIndexedSeq
   }
 
   override def load: Matrix = {
     implicit val mode = Hdfs(true, new JobConf())
     val ret = SparseMatrix.zeros(rows, cols)
-    val partFile = shard.map { i => "/" + i }.getOrElse("")
-    Tsv(path + partFile + "/*").readAtSubmitter[(Int, Int, Float)]
+    println("reading data from path: " + path)
+    Tsv(path + "/*").readAtSubmitter[(Int, Int, Float)]
       .zipWithIndex
       .foreach { case ((row, col, value), ind) =>
         if (ind % 500000 == 0)

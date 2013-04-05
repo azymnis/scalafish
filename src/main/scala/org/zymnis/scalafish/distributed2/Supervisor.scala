@@ -94,8 +94,10 @@ class Supervisor extends Actor {
       checkIfInited
 
     case rs @ RunStep(step, part, worker, mat, getObj) =>
+      println("supervisor received runstep for part: " + part.id)
       // No one else can be using this partition
       val tempMat = rightData.take(part.id).getOrElse(DenseMatrix.zeros(ROWS, COLS))
+      println("done reading right matrix part")
       if(!MatrixClient.read(mat.location, mat.uuid, tempMat)) println("Failed to read: " + mat)
       workers(worker.id) ! RunStepLocal(step, part, worker, tempMat, getObj)
     case DoneStepLocal(worker, step, part, right, obj) =>
