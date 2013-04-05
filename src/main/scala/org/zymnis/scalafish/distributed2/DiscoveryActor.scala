@@ -27,11 +27,24 @@ case class HostPorts(shard: Int, host: String, akkaPort: Int, matrixPort: Int)
 sealed trait DiscoveryState { self =>
   def handle(msg: DiscoveryMessage, ref: ActorRef, system: ActorContext): DiscoveryState = {
     msg match {
-      case UseZookeeper(host, port, path, count) =>
-        DiscoInit(self.asInstanceOf[Born].caller, system.actorOf(Props(new Client(host, port))), ref, path, Nil, count)
-      case FindSupervisors => self.asInstanceOf[DiscoInit].getChildren
-      case ReceiveChildren(children) => self.asInstanceOf[DiscoInit].receiveChildren(children)
-      case ReceiveData(data) => self.asInstanceOf[DiscoInit].receiveData(data)
+      case UseZookeeper(host, port, path, count) => self match {
+        case bself: Born =>
+          DiscoInit(bself.caller,
+            system.actorOf(Props(new Client(host, port))), ref, path, Nil, count)
+        case _ => println("Unexpected message: " + msg + " in state: " + self); self
+      }
+      case FindSupervisors => self match {
+        case dself: DiscoInit => dself.getChildren
+        case _ => println("Unexpected message: " + msg + " in state: " + self); self
+      }
+      case ReceiveChildren(children) => self match {
+        case dself: DiscoInit => dself.receiveChildren(children)
+        case _ => println("Unexpected message: " + msg + " in state: " + self); self
+      }
+      case ReceiveData(data) => self match {
+        case dself: DiscoInit => dself.receiveData(data)
+        case _ => println("Unexpected message: " + msg + " in state: " + self); self
+      }
     }
   }
 

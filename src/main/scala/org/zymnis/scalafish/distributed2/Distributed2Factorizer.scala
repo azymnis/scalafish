@@ -48,11 +48,11 @@ object Distributed2 {
   val COLS = 16000
   // val ROWS = 2046
   // val COLS = 10122134
-  val SUPERVISORS = 2
-  val WORKERS = 4
+  val SUPERVISORS = 10
+  val WORKERS = 8
   val REALRANK = 10
   val FACTORRANK = REALRANK + 5
-  val DENSITY = 0.1
+  val DENSITY = 0.01
   val MU = 1e-4f
   val ALPHA = 1e-3
   val ITERS = 100
