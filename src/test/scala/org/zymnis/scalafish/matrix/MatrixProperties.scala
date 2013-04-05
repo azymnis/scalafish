@@ -395,6 +395,26 @@ object MatrixProperties extends Properties("Matrix") {
 
   property("Matrix roundtrips to file 10x10") = fileRoundTripProperty(10, 10)
 
+  def scalaFishLaw(left: Matrix, right: Matrix, data: Matrix): Boolean = {
+    val newM = DenseMatrix.zeros(data.rows, data.cols)
+    newM := left * right.t
+    newM -= data
+
+    val su = new ScalafishUpdater(left, right, data)
+    val newM2 = DenseMatrix.zeros(data.rows, data.cols)
+    newM2 := su
+    def rowColCorrect(row: Int, col: Int): Boolean = {
+      (data(row, col) == 0.0f) || {
+        scala.math.abs(newM2(row, col) - newM(row, col)) < 1e-6
+      }
+    }
+    val good = for {
+      row <- (0 until data.rows)
+      col <- (0 until data.cols)
+    } yield rowColCorrect(row, col)
+    good.reduce { _ && _ }
+  }
+
   def scalafishUpdaterProperty(rows: Int, cols: Int, rank: Int, blocks: Int)(implicit cons: Arbitrary[MatrixCons]) = {
     val density = scala.math.random
 
@@ -409,12 +429,9 @@ object MatrixProperties extends Properties("Matrix") {
     forAll { data: (Matrix, Matrix, Matrix) =>
 
       val (d, l, r) = data
-      val su = new ScalafishUpdater(l, r, d)
+      val bigGood = scalaFishLaw(l, r, d)
 
-      val out = SparseMatrix.zeros(rows, cols)
-      out := su
-
-      val out2 = SparseMatrix.zeros(rows, cols)
+      // Also block it:
       val rBlocks = r.rowSlice(blocks)
       val lBlocks = l.rowSlice(blocks)
 
@@ -428,19 +445,11 @@ object MatrixProperties extends Properties("Matrix") {
         dCol <- dRow.colSlice(blocks)
       } yield (dCol)
 
-      val out2Blocks = for {
-        oRow <- out2.rowSlice(blocks)
-        oCol <- oRow.colSlice(blocks)
-      } yield (oCol)
-
-      rlBlocks.zip(out2Blocks).zip(dBlocks).foreach { case (((rB, lB), oB), dB) =>
-        val suIn = new ScalafishUpdater(lB, rB, dB)
-        oB := suIn
-      }
-
-      eq(out, out2)
+      bigGood && rlBlocks.zip(dBlocks).map { case ((rB, lB), dB) =>
+        scalaFishLaw(lB, rB, dB)
+      }.reduce { _ && _ }
     }
   }
 
-  property("ScalafishUpdate property 30x30x3x3") = scalafishUpdaterProperty(10, 10, 3, 3)
+  property("ScalafishUpdate property 30x30x3x3") = scalafishUpdaterProperty(12, 9, 3, 3)
 }
