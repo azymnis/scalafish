@@ -11,45 +11,51 @@ class SparseMatrix private (override val rows: Int,
 
   def contains(row: Int, col: Int): Boolean = {
     val idx = indexer.rowCol(row, col)
-    hashMap.containsKey(idx)
+    hashMap.containsKey(mapIdx(idx))
   }
-  override def apply(idx: Long): Float = hashMap.get(idx)
+  override def apply(idx: Long): Float = hashMap.get(mapIdx(idx))
 
   // Returns a view with min inclusive, but max exclusive bounds
-  // TODO: fix this crap
   override def blockView(rowMin: Int, colMin: Int, rowMax: Int, colMax: Int): SparseMatrix = {
     val thisRows = rowMax - rowMin
     val thisCols = colMax - colMin
-    val thisSize = thisRows.toLong * thisCols.toLong
-    val out = SparseMatrix.zeros(thisRows, thisCols)
-    val innerIter = self.denseIndices.filter(
-      new LongPredicate { def apply(l: Long) = {
-        val r = self.indexer.row(l) - rowMin
-        val c = self.indexer.col(l) - colMin
-        (0 <= r && r < thisRows) && (0 <= c && c < thisCols)
+    val newIndexer = Indexer.rowMajor(thisCols)
+
+    new SparseMatrix(thisRows, thisCols, newIndexer, hashMap) {
+      override def mapIdx(idx: Long): Long = {
+        val r = this.indexer.row(idx) + rowMin
+        val c = this.indexer.col(idx) + colMin
+        self.mapIdx(self.indexer.rowCol(r,c))
       }
-    })
-    while (innerIter.hasNext) {
-      val idx = innerIter.next
-      val r = self.indexer.row(idx) - rowMin
-      val c = self.indexer.col(idx) - colMin
-      out.update(r, c, self.apply(idx))
+      override def denseIndices = self.denseIndices.filter(
+        new LongPredicate { def apply(l: Long) = {
+          val r = self.indexer.row(l) - rowMin
+          val c = self.indexer.col(l) - colMin
+          (0 <= r && r < thisRows) && (0 <= c && c < thisCols)
+        }
+      })
+      override def nonZeros = {
+        val iter = denseIndices
+        var nz = 0L
+        while(iter.hasNext) {
+          nz += 1L
+        }
+        nz
+      }
     }
-    out
   }
 
-  // TODO: fix this crap
-  override def t: SparseMatrix = {
-    val out = SparseMatrix.zeros(self.cols, self.rows)
-    val innerIter = self.denseIndices
-    while (innerIter.hasNext) {
-      val idx = innerIter.next
+  override def t: SparseMatrix = new SparseMatrix(cols, rows, indexer, hashMap) {
+    // Don't use the indexer transpose, instead tranpose within the mapIdx
+    override def mapIdx(idx: Long): Long = {
       val r = self.indexer.row(idx)
       val c = self.indexer.col(idx)
-      out.update(c, r, self.apply(idx))
+      self.mapIdx(self.indexer.rowCol(c, r))
     }
-    out
+    override def t = self
   }
+
+  protected def mapIdx(idx: Long): Long = idx
 
   override def rowSlice(numSlices: Int): IndexedSeq[SparseMatrix] =
     super.rowSlice(numSlices).asInstanceOf[IndexedSeq[SparseMatrix]]
@@ -61,10 +67,10 @@ class SparseMatrix private (override val rows: Int,
 
   override def update(idx: Long, f: Float) {
     if( f != 0.0 ) {
-      hashMap.put(idx, f)
+      hashMap.put(mapIdx(idx), f)
     }
     else {
-      hashMap.remove(idx)
+      hashMap.remove(mapIdx(idx))
     }
   }
 
@@ -76,7 +82,7 @@ class SparseMatrix private (override val rows: Int,
   override def denseIndices: LongIterator = new LongIterator {
     val lit = hashMap.keySet.iterator
     def hasNext = lit.hasNext
-    def next = lit.nextLong
+    def next = mapIdx(lit.nextLong)
   }
 }
 
