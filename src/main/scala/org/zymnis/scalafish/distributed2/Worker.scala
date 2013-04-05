@@ -68,7 +68,7 @@ class Worker extends Actor with ActorLogging {
     left *= (1.0f - mu * alpha)
     log.info("Done with left scaling multiplication.")
 
-    left -= delta * right
+    left := SparseLeftProduct(delta, right, -1.0)
 
     log.info("Done with left update.")
 
@@ -81,7 +81,7 @@ class Worker extends Actor with ActorLogging {
     right *= (1.0f - mu * alpha)
     log.info("Done with right scaling multiplication.")
 
-    right -= delta.t * left
+    right := SparseLeftProduct(delta.t, left, -1.0)
     log.info("Done with right update.")
   }
 }

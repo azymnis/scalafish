@@ -269,3 +269,36 @@ case class ProductUpdater(m1: Matrix, m2: Matrix, coeff: Double = 0.0, pcoeff: D
     }
   }
 
+// Sets result = result + pcoeff * (m1 * m2)
+// useful for when m1 columns are fewer than m1 rows, and m1 is very sparse
+case class SparseLeftProduct(m1: Matrix, m2: Matrix, pcoeff: Double = 1.0)
+  extends ShapedUpdater {
+    def rows = m1.rows
+    def cols = m2.cols
+    // TODO perhaps optimize this for cache locality, assume m1 is rowMajor for now
+    def update(result: Matrix) = {
+      val resultCols = result.cols
+      require(result.rows == m1.rows, "Rows do not match: %d, %d".format(result.rows, m1.rows))
+      require(result.cols == m2.cols, "Cols do not match: %d, %d".format(result.cols, m2.cols))
+      require(m1.cols == m2.rows, "Inner dimension mismatch")
+      // R_{ij} = \sum_k A_ik B_kj
+      // a.denseIndices { (i, k) =>
+      //   js.foreach { j =>
+      //     r(i,j) = r(i,j) + a(i,k) * b(k,j)
+      //   }
+      // }
+      val m1iter = m1.denseIndices
+      while(m1iter.hasNext) {
+        val idx = m1iter.next
+        val idxI = m1.indexer.row(idx)
+        val idxK = m1.indexer.col(idx)
+        var idxJ = 0
+        while(idxJ < resultCols) {
+          //r(i,j) = r(i,j) + p * a(i,k) * b(k,j)
+          val newR = result(idxI, idxJ) + pcoeff * m1(idx) * m2(idxK, idxJ)
+          result.update(idxI, idxJ, newR.toFloat)
+          idxJ += 1
+        }
+      }
+    }
+  }

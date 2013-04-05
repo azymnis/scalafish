@@ -54,6 +54,14 @@ trait Matrix extends Shaped { self =>
     val col = indexer.col(rowcol)
     update(row, col, f)
   }
+  // Reset everything to zero
+  def clear: this.type = {
+    val iter = denseIndices
+    while(iter.hasNext) {
+      update(iter.next, 0.0f)
+    }
+    this
+  }
 
   def :=(updater: MatrixUpdater): this.type = {
     updater.update(self)

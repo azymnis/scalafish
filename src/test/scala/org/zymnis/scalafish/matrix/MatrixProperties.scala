@@ -120,13 +120,20 @@ object MatrixProperties extends Properties("Matrix") {
     val density = scala.math.random
     implicit val arb = Arbitrary(denseOrSparse(rows, cols, density))
 
+    val eq = Equiv[Matrix].equiv _
+
     forAll { (a: Matrix, b: Matrix) =>
       val temp1 = newMatrix(rows, rows)
       val temp2 = newMatrix(rows, rows)
       temp1 := a * b.t
       prod(temp2, a, b.t)
-      temp1 -= temp2
-      isZero(temp1)
+      eq(temp1, temp2) && {
+        val temp3 = newMatrix(rows, rows)
+        val temp4 = newMatrix(rows, rows)
+        temp3 := SparseLeftProduct(a, b.t, -1.0f)
+        temp4 -= a * b.t
+        eq(temp3, temp4)
+      }
     }
   }
 
