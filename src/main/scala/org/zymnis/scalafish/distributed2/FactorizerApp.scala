@@ -12,6 +12,7 @@ object FactorizerApp extends App {
     val shard = args("shard").toInt
     val host = args("host")
     val port = args("akkaPort").toInt
+    val matPort = args("matrixPort").toInt
     val zkHost = args("zkHost")
     val zkPort = args("zkPort").toInt
     val zkPath = args("zkPath")
@@ -22,7 +23,8 @@ object FactorizerApp extends App {
 
       val nSupervisors = 2
       val nWorkers = 4
-      MasterApp(nSupervisors, nWorkers, host, port, zkHost, zkPort, zkPath)
+      val matAd = new InetSocketAddress(host, matPort)
+      MasterApp(nSupervisors, nWorkers, host, port, zkHost, zkPort, zkPath, matAd)
       println("Created the master. Here we go!")
     } else {
       println("Am a supervisor!")

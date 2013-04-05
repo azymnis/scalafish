@@ -39,7 +39,7 @@ class SharedMatrices(localAdd: InetSocketAddress, rows: Int, cols: Int, count: I
     }
 }
 
-class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPath: String) extends Actor {
+class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPath: String, matrixAddress: InetSocketAddress) extends Actor {
   import Distributed2._
   implicit val rng = new java.util.Random(1)
   val supervisorAddresses = Seq[InetSocketAddress]()
@@ -80,8 +80,7 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
   def genPart: Matrix =
     DenseMatrix.rand(COLS/nSupervisors/nWorkers, FACTORRANK)
 
-  def getMatrixServerAddress: InetSocketAddress = sys.error("Not implemented")
-  def matrixServerAddressOf(s: SupervisorId): InetSocketAddress = sys.error("Not implemented")
+  def getMatrixServerAddress: InetSocketAddress = matrixAddress
 
   def receive = {
     case Start(loader, lwriter, rwriter) =>
@@ -98,6 +97,7 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
           val supervisorId = hp.shard - 1
           val address = Address("akka", "SupervisorSystem", hp.host, hp.akkaPort)
           val matrixAddress = new InetSocketAddress(hp.host, hp.matrixPort)
+          // TODO: store matrix address
           val supervisor = context.actorOf(
             Props[Supervisor].withDeploy(Deploy(scope = RemoteScope(address))),
             name = "supervisor_" + supervisorId)
@@ -222,11 +222,11 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
 }
 
 object MasterApp {
-  def apply(nSupervisors: Int, nWorkers: Int, host: String, port: Int, zkHost: String, zkPort: Int, zkPath: String) =
-    new MasterApp(nSupervisors, nWorkers, Distributed2.getConfig(host, port), zkHost, zkPort, zkPath)
+  def apply(nSupervisors: Int, nWorkers: Int, host: String, port: Int, zkHost: String, zkPort: Int, zkPath: String, matAd: InetSocketAddress) =
+    new MasterApp(nSupervisors, nWorkers, Distributed2.getConfig(host, port), zkHost, zkPort, zkPath, matAd)
 }
 
-class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config, zkHost: String, zkPort: Int, zkPath: String) {
+class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config, zkHost: String, zkPort: Int, zkPath: String, matAd: InetSocketAddress) {
   // val loader = HadoopMatrixLoader("/Users/argyris/Downloads/logodds", 10)
   val loader = new TestLoader
   val lwriter = new PrintWriter(-1, -1)
@@ -234,7 +234,7 @@ class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config, zkHost: String
 
   val system = ActorSystem("MasterSystem", config)
   val master = system.actorOf(
-    Props(new Master(nSupervisors, nWorkers, zkHost, zkPort, zkPath)),
+    Props(new Master(nSupervisors, nWorkers, zkHost, zkPort, zkPath, matAd)),
     name = "master")
   master ! Start(loader, lwriter, rwriter)
 }
