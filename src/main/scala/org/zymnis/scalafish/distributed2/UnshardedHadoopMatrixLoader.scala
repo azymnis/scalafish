@@ -36,14 +36,13 @@ object UnshardedHadoopMatrixLoader {
   def apply(rootPath: String) = {
     // TODO: Set up namenode auth.
     val conf = new JobConf
-    conf.addResource("/etc/hadoop/hadoop-conf-dw-smf1")
     val process = new HadoopFlowProcess(conf)
     val coords = HDFSMetadata.get[Map[String, Int]](conf, rootPath)
       .getOrElse(sys.error("No metadata available!"))
 
     assert(coords.contains("row"))
     assert(coords.contains("col"))
-    new UnshardedHadoopMatrixLoader(rootPath, conf, coords("row"), coords("col"), Some(_))
+    new UnshardedHadoopMatrixLoader(rootPath, coords("row"), coords("col"), None)
   }
 }
 
@@ -51,30 +50,26 @@ object UnshardedHadoopMatrixLoader {
   * Pred should return true if this particular loader is responsible
   * for that shard in the matrix, false otherwise.
   */
-class UnshardedHadoopMatrixLoader(val path: String, conf: JobConf, val rows: Int, val cols: Int,
-  pred: Int => Option[Int]) extends MatrixLoader {
+class UnshardedHadoopMatrixLoader(val path: String, val rows: Int, val cols: Int,
+  shard: Option[Int]) extends MatrixLoader {
   import Dsl._
 
   override def rowPartition(parts: Int): IndexedSeq[MatrixLoader] = {
     (0 to parts).map { i =>
       val newMaxRows = rows / parts
-      new UnshardedHadoopMatrixLoader(path, conf, newMaxRows, cols, { idx =>
-        val inclusiveLowerBound = i * newMaxRows
-        val exclusiveUpperBound = (i + 1) * newMaxRows
-        if ((idx >= inclusiveLowerBound) && (idx < exclusiveUpperBound))
-          Some(idx - inclusiveLowerBound)
-        else
-          None
-      })
+      new UnshardedHadoopMatrixLoader(path, newMaxRows, cols, Some(i))
     }.toIndexedSeq
   }
 
   override def load: Matrix = {
-    implicit val mode = Hdfs(true, conf)
+    implicit val mode = Hdfs(true, new JobConf())
     val ret = SparseMatrix.zeros(rows, cols)
-    Tsv(path).readAtSubmitter[(Int, Int, Float)]
-      .filter { case (row, col, value) => pred(row).isDefined }
-      .foreach { case (row, col, value) =>
+    val partFile = shard.map { i => "/" + i }.getOrElse("")
+    Tsv(path + partFile + "/*").readAtSubmitter[(Int, Int, Float)]
+      .zipWithIndex
+      .foreach { case ((row, col, value), ind) =>
+        if (ind % 500000 == 0)
+          println("done with %s rows".format(ind))
         ret.update(row, col, value)
     }
     ret

@@ -58,23 +58,28 @@ class PrepJob(args: Args) extends Job(args) {
         (hashMod(row, rowMod), hashMod(col, columnMod), row, col, value)
     }
 
-  val rowMapping: TypedPipe[(HashedRow, Set[Row])] =
-    processed.map { case (hashedRow, _, row, _, _) => (hashedRow, row) }
-      .group.toSet
-      .write(VersionedKeyValSource[HashedRow, Set[Row]](mappingPath + "/row"))
+  // val rowMapping: TypedPipe[(HashedRow, Set[Row])] =
+  //   processed.map { case (hashedRow, _, row, _, _) => (hashedRow, row) }
+  //     .group.withReducers(20).toSet
+  //     .write(VersionedKeyValSource[HashedRow, Set[Row]](mappingPath + "/row"))
 
-  val colMapping: TypedPipe[(HashedColumn, Set[Column])] =
-    processed.map { case (_, hashedCol, _, col, _) => (hashedCol, col) }
-      .group.toSet
-      .write(VersionedKeyValSource[HashedColumn, Set[Column]](mappingPath + "/col"))
+  // val colMapping: TypedPipe[(HashedColumn, Set[Column])] =
+  //   processed.map { case (_, hashedCol, _, col, _) => (hashedCol, col) }
+  //     .group.withReducers(20).toSet
+  //     .write(VersionedKeyValSource[HashedColumn, Set[Column]](mappingPath + "/col"))
 
   // Write out the final data to a pail at outputPath.
   val data =
     processed.map { case (hashedRow, hashedCol, row, col, value) =>
         ((hashedRow, hashedCol), value)
-    }.group.sum
+    }.group.withReducers(20).sum
       .map { case ((row, col), value) => (row, col, value) }
-      .write(TypedTsv[(Int, Int, Float)](outputPath))
+
+  (0 until rowShards).foreach { sid =>
+    data
+      .filter { _._1 % rowShards == sid }
+      .write(TypedTsv[(Int, Int, Float)](outputPath + "/" + sid))
+  }
 
   // Path for writing metadata for transfer.
   val tempPath = "/tmp/scalafish/" + UUID.randomUUID()
@@ -93,7 +98,7 @@ class PrepJob(args: Args) extends Job(args) {
     val coords: Option[Map[String, Int]] =
       iter.asScala.toSeq.headOption.map { tuple =>
         Map(
-          "row" -> tuple.getInteger("row"),
+          "row" -> rowMod,
           "col" -> columnMod,
           "shards" -> rowShards
         )

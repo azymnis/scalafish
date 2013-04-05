@@ -16,7 +16,7 @@ import org.zymnis.scalafish.ScalafishUpdater
 import Syntax._
 
 object Distributed2Factorizer extends App {
-  val loader = UnshardedHadoopMatrixLoader("hdfs://hadoop-dw-nn.smf1.twitter.com/user/sritchie/scalafish/logodds_pos")
+  val loader = new TestLoader
   val lwriter = new PrintWriter(-1, -1)
   val rwriter = new PrintWriter(-1, -1)
 
@@ -29,14 +29,14 @@ object Distributed2Factorizer extends App {
 object Distributed2 {
   implicit val rng = new java.util.Random
 
-  val ROWS = 32
-  val COLS = 16
+  val ROWS = 100000000
+  val COLS = 60000
   // val ROWS = 2046
   // val COLS = 10122134
-  val SUPERVISORS = 2
+  val SUPERVISORS = 10
   val WORKERS = 4
   val REALRANK = 10
-  val FACTORRANK = REALRANK + 5
+  val FACTORRANK = 100
   val DENSITY = 0.1
   val MU = 1e-4f
   val ALPHA = 1e-2

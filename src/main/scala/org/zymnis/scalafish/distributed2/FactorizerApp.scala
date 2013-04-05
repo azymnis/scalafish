@@ -16,15 +16,16 @@ object FactorizerApp extends App {
     val zkHost = args("zkHost")
     val zkPort = args("zkPort").toInt
     val zkPath = args("zkPath")
+    val dataPath = args("dataPath")
 
     println("Starting Factorizer App.")
     if (shard == 0) {
       println("Am the MASTER!")
 
-      val nSupervisors = 2
+      val nSupervisors = 10
       val nWorkers = 4
       val matAd = new InetSocketAddress(host, matPort)
-      MasterApp(nSupervisors, nWorkers, host, port, zkHost, zkPort, zkPath, matAd)
+      MasterApp(dataPath, nSupervisors, nWorkers, host, port, zkHost, zkPort, zkPath, matAd)
       println("Created the master. Here we go!")
     } else {
       println("Am a supervisor!")

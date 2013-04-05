@@ -220,13 +220,12 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
 }
 
 object MasterApp {
-  def apply(nSupervisors: Int, nWorkers: Int, host: String, port: Int, zkHost: String, zkPort: Int, zkPath: String, matAd: InetSocketAddress) =
-    new MasterApp(nSupervisors, nWorkers, Distributed2.getConfig(host, port), zkHost, zkPort, zkPath, matAd)
+  def apply(dataPath: String, nSupervisors: Int, nWorkers: Int, host: String, port: Int, zkHost: String, zkPort: Int, zkPath: String, matAd: InetSocketAddress) =
+    new MasterApp(dataPath, nSupervisors, nWorkers, Distributed2.getConfig(host, port), zkHost, zkPort, zkPath, matAd)
 }
 
-class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config, zkHost: String, zkPort: Int, zkPath: String, matAd: InetSocketAddress) {
-  // val loader = HadoopMatrixLoader("/Users/argyris/Downloads/logodds", 10)
-  val loader = new TestLoader
+class MasterApp(dataPath: String, nSupervisors: Int, nWorkers: Int, config: Config, zkHost: String, zkPort: Int, zkPath: String, matAd: InetSocketAddress) {
+  val loader = UnshardedHadoopMatrixLoader(dataPath)
   val lwriter = new PrintWriter(-1, -1)
   val rwriter = new PrintWriter(-1, -1)
 
