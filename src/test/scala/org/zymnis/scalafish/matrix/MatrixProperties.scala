@@ -8,6 +8,8 @@ import java.util.UUID
 
 import Syntax._
 
+import org.zymnis.scalafish.ScalafishUpdater
+
 object MatrixProperties extends Properties("Matrix") {
   implicit val rng = new java.util.Random(1)
 
@@ -357,4 +359,52 @@ object MatrixProperties extends Properties("Matrix") {
 
   property("Matrix roundtrips to file 10x10") = fileRoundTripProperty(10, 10)
 
+  def scalafishUpdaterProperty(rows: Int, cols: Int, rank: Int, blocks: Int)(implicit cons: Arbitrary[MatrixCons]) = {
+    val density = scala.math.random
+
+    implicit val arb = Arbitrary(for {
+      d <- sparse(rows, cols, density)
+      l <- dense(rows, rank)
+      r <- dense(cols, rank)
+    } yield (d, l, r))
+
+    val eq = Equiv[Matrix].equiv _
+
+    forAll { data: (Matrix, Matrix, Matrix) =>
+
+      val (d, l, r) = data
+      val su = new ScalafishUpdater(l, r, d)
+
+      val out = SparseMatrix.zeros(rows, cols)
+      out := su
+
+      val out2 = SparseMatrix.zeros(rows, cols)
+      val rBlocks = r.rowSlice(blocks)
+      val lBlocks = l.rowSlice(blocks)
+
+      val rlBlocks = for {
+        rb <- rBlocks
+        lb <- lBlocks
+      } yield (rb, lb)
+
+      val dBlocks = for {
+        dRow <- d.rowSlice(blocks)
+        dCol <- dRow.colSlice(blocks)
+      } yield (dCol)
+
+      val out2Blocks = for {
+        oRow <- out2.rowSlice(blocks)
+        oCol <- oRow.colSlice(blocks)
+      } yield (oCol)
+
+      rlBlocks.zip(out2Blocks).zip(dBlocks).foreach { case (((rB, lB), oB), dB) =>
+        val suIn = new ScalafishUpdater(lB, rB, dB)
+        oB := suIn
+      }
+
+      eq(out, out2)
+    }
+  }
+
+  property("ScalafishUpdate property 30x30x3x3") = scalafishUpdaterProperty(10, 10, 3, 3)
 }
