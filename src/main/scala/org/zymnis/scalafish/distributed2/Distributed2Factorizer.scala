@@ -16,7 +16,7 @@ import org.zymnis.scalafish.ScalafishUpdater
 import Syntax._
 
 object Distributed2Factorizer extends App {
-  val loader = HadoopMatrixLoader("/Users/argyris/Downloads/logodds", 10)
+  val loader = UnshardedHadoopMatrixLoader("hdfs://hadoop-dw-nn.smf1.twitter.com/user/sritchie/scalafish/logodds_pos")
   val lwriter = new PrintWriter(-1, -1)
   val rwriter = new PrintWriter(-1, -1)
 
