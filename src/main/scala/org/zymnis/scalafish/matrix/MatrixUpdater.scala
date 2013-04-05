@@ -1,5 +1,7 @@
 package org.zymnis.scalafish.matrix
 
+import scala.annotation.tailrec
+
 trait Shaped {
   def rows: Int
   def cols: Int
@@ -70,6 +72,29 @@ object MatrixUpdater {
           rowIdx += 1
         }
         colIdx += 1
+      }
+    }
+  }
+
+  // Assumes an initially empty matrix
+  def randDensity(prob: Double): MatrixUpdater = new MatrixUpdater {
+    import Syntax._
+    def update(m: Matrix) {
+      val positions = m.size
+      @tailrec
+      def randomize(dense: Int = 0): Unit = {
+        if(dense > (positions * prob)) ()
+        else {
+          val randpos = scala.math.min((positions * scala.math.random).toLong,
+            positions - 1L)
+          if(m(randpos) == 0.0f) {
+            m(randpos) = scala.math.random.toFloat
+            randomize(dense + 1)
+          }
+          else {
+            randomize(dense)
+          }
+        }
       }
     }
   }
