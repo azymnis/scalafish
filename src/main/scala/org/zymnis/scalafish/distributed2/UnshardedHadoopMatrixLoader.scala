@@ -32,60 +32,49 @@ import org.zymnis.scalafish.job._
 import com.twitter.bijection.Conversion.asMethod
 import scala.util.control.Exception.allCatch
 
-object FuckleberryFinn extends App {
-  val ret = HadoopMatrixLoader("/Users/argyris/Downloads/logodds", 10)
-  println("FUCKING LOADING")
-  val matrices = ret.rowPartition(10).map { _.load }
-  println("rows: " + matrices.map { _.rows }.sum)
-  println("cols: " + matrices.map { _.cols }.sum)
-  println("size: " + matrices.map { _.size }.sum)
-}
-
-object HadoopMatrixLoader {
-  implicit val toTriple: Injection[HadoopMatrixLoader, (String, Int, Int)] =
-    new AbstractInjection[HadoopMatrixLoader, (String, Int, Int)] {
-      def apply(loader: HadoopMatrixLoader) = (loader.path, loader.rows, loader.cols)
-      def invert(triple: (String, Int, Int)) = {
-        val (root, rows, cols) = triple
-        scala.util.control.Exception.allCatch.opt {
-          new HadoopMatrixLoader(root, rows, cols)
-        }
-      }
-  }
-
-  implicit val toBytes: Injection[HadoopMatrixLoader, Array[Byte]] =
-    toTriple.andThen(Bufferable.injectionOf[(String, Int, Int)])
-
-  val kryoSerializer: KSerializer[HadoopMatrixLoader] = InjectiveSerializer.asKryo
-
-  def apply(rootPath: String, shards: Int) = {
+object UnshardedHadoopMatrixLoader {
+  def apply(rootPath: String) = {
+    // TODO: Set up namenode auth.
     val conf = new JobConf
-    val process = new HadoopFlowProcess(new JobConf)
+    conf.addResource("/etc/hadoop/hadoop-conf-dw-smf1")
+    val process = new HadoopFlowProcess(conf)
     val coords = HDFSMetadata.get[Map[String, Int]](conf, rootPath)
       .getOrElse(sys.error("No metadata available!"))
 
     assert(coords.contains("row"))
     assert(coords.contains("col"))
-    new HadoopMatrixLoader(rootPath, coords("row"), coords("col"))
+    new UnshardedHadoopMatrixLoader(rootPath, conf, coords("row"), coords("col"), Some(_))
   }
 }
 
-class HadoopMatrixLoader(val path: String, val rows: Int, val cols: Int) extends MatrixLoader {
+/**
+  * Pred should return true if this particular loader is responsible
+  * for that shard in the matrix, false otherwise.
+  */
+class UnshardedHadoopMatrixLoader(val path: String, conf: JobConf, val rows: Int, val cols: Int,
+  pred: Int => Option[Int]) extends MatrixLoader {
   import Dsl._
 
   override def rowPartition(parts: Int): IndexedSeq[MatrixLoader] = {
-    // assert(parts == shards, "can't partition!")
     (0 to parts).map { i =>
-      new HadoopMatrixLoader(path + "/" + i, rows / parts, cols)
+      val newMaxRows = rows / parts
+      new UnshardedHadoopMatrixLoader(path, conf, newMaxRows, cols, { idx =>
+        val inclusiveLowerBound = i * newMaxRows
+        val exclusiveUpperBound = (i + 1) * newMaxRows
+        if ((idx >= inclusiveLowerBound) && (idx < exclusiveUpperBound))
+          Some(idx - inclusiveLowerBound)
+        else
+          None
+      })
     }.toIndexedSeq
   }
 
   override def load: Matrix = {
-    val conf = new JobConf
     implicit val mode = Hdfs(true, conf)
     val ret = SparseMatrix.zeros(rows, cols)
-    Tsv(path).readAtSubmitter[(Int, Int, Int, Float)]
-      .foreach { case (_, row, col, value) =>
+    Tsv(path).readAtSubmitter[(Int, Int, Float)]
+      .filter { case (row, col, value) => pred(row).isDefined }
+      .foreach { case (row, col, value) =>
         ret.update(row, col, value)
     }
     ret
