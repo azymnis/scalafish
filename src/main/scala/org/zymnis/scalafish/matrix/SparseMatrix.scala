@@ -64,14 +64,18 @@ class SparseMatrix private (override val rows: Int,
 }
 
 object SparseMatrix {
+  val LOAD_FACTOR = 0.95f // We are optimizing for low memory
   def apply(su: ShapedUpdater): SparseMatrix = {
     val z = zeros(su.rows, su.cols)
     z := su
     z
   }
 
-  def zeros(rows: Int, cols: Int): SparseMatrix =
-    new SparseMatrix(rows, cols,  Indexer.rowMajor(cols), new Long2FloatMap)
+  def zeros(rows: Int, cols: Int): SparseMatrix = {
+    val elements = scala.math.max(rows, cols)
+    new SparseMatrix(rows, cols,  Indexer.rowMajor(cols),
+      new Long2FloatMap(elements, LOAD_FACTOR))
+  }
 
   // TODO: Inefficient, fix
   def from(rows: Int, cols: Int, rep: Map[Long, Float]): SparseMatrix = {
@@ -102,7 +106,7 @@ object SparseMatrix {
   def from(rows: Int, cols: Int, row: Iterable[Int], col: Iterable[Int], vs: Array[Float]): SparseMatrix = {
     val idxer = Indexer.rowMajor(cols)
     val indices = row.view.zip(col).map { case (row, col) => idxer.rowCol(row, col) }.toArray
-    val ht = new Long2FloatMap(indices, vs)
+    val ht = new Long2FloatMap(indices, vs, LOAD_FACTOR)
     new SparseMatrix(rows, cols, idxer, ht)
   }
 

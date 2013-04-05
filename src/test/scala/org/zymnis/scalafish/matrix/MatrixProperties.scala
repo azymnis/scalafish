@@ -200,7 +200,7 @@ object MatrixProperties extends Properties("Matrix") {
   property("FrobNormLaws for constant SparseMatrix") =
     forAll { (nonZeros: List[(Int,Int)]) =>
       def pos(x0: Int) = {
-        val x = x0 / 2 // make sure it isn't too close to overflow
+        val x = x0 / 20000 // make sure it isn't too close to overflow
         if (x >= 0) x
         else if (x <= Int.MinValue) Int.MaxValue  // -min == min
         else -x
