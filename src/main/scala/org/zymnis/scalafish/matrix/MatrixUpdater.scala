@@ -74,6 +74,36 @@ object MatrixUpdater {
     }
   }
 
+  def randRank(rank: Int, prob: Double = 1.0): MatrixUpdater = new MatrixUpdater {
+    import Syntax._
+
+    def update(m: Matrix) {
+      val cols = m.cols
+      val rows = m.rows
+      var rowIdx = 0
+      var colIdx = 0
+      val randRow = DenseMatrix.zeros(1, rank)
+      val scalar = DenseMatrix.zeros(1, 1)
+      val colCache = scala.collection.mutable.Map[Int, Matrix]()
+      while(rowIdx < rows) {
+        colIdx = 0
+        randRow := rand
+        while(colIdx < cols) {
+          val col = colCache.getOrElseUpdate(colIdx, {
+            val randCol = DenseMatrix.zeros(rank, 1)
+            randCol := rand
+          })
+          if (scala.math.random < prob) {
+            scalar := randRow * col
+            m.update(rowIdx, colIdx, scalar(0,0))
+          }
+          colIdx += 1
+        }
+        rowIdx += 1
+      }
+    }
+  }
+
   // Macros would be huge here:
   def scale(scalar: Float): MatrixUpdater = new MatrixUpdater {
     def update(m: Matrix) {

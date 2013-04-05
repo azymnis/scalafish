@@ -20,8 +20,11 @@ object MatrixLoader {
 
 class TestLoader extends MatrixLoader {
   import Distributed2._
-  def real: Matrix = DenseMatrix.randLowRank(ROWS, COLS, REALRANK)
-  lazy val load: Matrix = SparseMatrix.sample(DENSITY, real)
+
+  lazy val load: Matrix = {
+    val sm = SparseMatrix.zeros(ROWS, COLS)
+    sm := MatrixUpdater.randRank(REALRANK, DENSITY)
+  }
 
   def rows = ROWS
   def cols = COLS
