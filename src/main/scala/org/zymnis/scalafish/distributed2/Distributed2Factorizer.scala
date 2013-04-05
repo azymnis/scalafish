@@ -31,9 +31,9 @@ object Distributed2 {
 
   val ROWS = 32
   val COLS = 16
-  //val ROWS = 2046
-  //val COLS = 10122134
-  val SUPERVISORS = 1
+  // val ROWS = 2046
+  // val COLS = 10122134
+  val SUPERVISORS = 2
   val WORKERS = 4
   val REALRANK = 10
   val FACTORRANK = REALRANK + 5
@@ -60,7 +60,7 @@ object Distributed2 {
         "org.zymnis.scalafish.distributed2.Message" = kryo
       }
       actor.provider = "akka.remote.RemoteActorRefProvider"
-      remote.netty.message-frame-size = 10 MiB
+      remote.netty.message-frame-size = 100 MiB
       remote.netty.hostname = "%s"
       remote.netty.port = %d
     }

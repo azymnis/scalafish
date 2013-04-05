@@ -9,16 +9,40 @@ import akka.util.duration._
 
 import com.typesafe.config.{ Config, ConfigFactory }
 
+import java.net.InetSocketAddress
 import scala.util.Random
 
 import org.zymnis.scalafish.matrix._
 import org.zymnis.scalafish.ScalafishUpdater
 
+import java.net.InetSocketAddress
+
 import Syntax._
 
-class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
+import java.util.UUID
+
+class SharedMatrices(localAdd: InetSocketAddress, rows: Int, cols: Int, count: Int)(implicit rng: java.util.Random)
+  extends AbstractMatrixDataServer {
+    override def port = localAdd.getPort
+
+    override val matrices = SharedMemory((0 until count).map { i => (UUID.randomUUID, DenseMatrix.rand(rows, cols)) })
+
+    def getRef(idx: Int): Option[MatrixRef] =
+      matrices.get(idx).map { case (uuid, _) => MatrixRef(localAdd, uuid) }
+
+    def take(idx: Int): Option[DenseMatrix] = matrices.take(idx).map { _._2 }
+    def replace(idx: Int, dm: DenseMatrix): Option[MatrixRef] = {
+      assert(dm.rows == rows, "Rows don't match")
+      assert(dm.cols == cols, "Cols don't match")
+      val newUuid = UUID.randomUUID
+      if(matrices.put(idx, (newUuid, dm))) Some(MatrixRef(localAdd, newUuid)) else None
+    }
+}
+
+class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPath: String, matrixAddress: InetSocketAddress) extends Actor {
   import Distributed2._
   implicit val rng = new java.util.Random(1)
+  val supervisorAddresses = Seq[InetSocketAddress]()
 
   sealed trait SupervisorState
   case object Initialized extends SupervisorState
@@ -26,14 +50,11 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
   case object HasLoaded extends SupervisorState
   case class Working(step: StepId, part: PartitionId) extends SupervisorState
 
-  val firstSupervisorPort = 2553
-  val superMap: Map[SupervisorId, ActorRef] = (0 until nSupervisors).map { sid =>
-    val address = Address("akka", "SupervisorSystem", "127.0.0.1", firstSupervisorPort + sid)
-    println("Trying to create supervisor at address: %s".format(address))
-    (SupervisorId(sid), context.actorOf(
-      Props[Supervisor].withDeploy(Deploy(scope = RemoteScope(address))),
-      name = "supervisor_" + sid))
-  }.toMap
+  var started: Boolean = false
+
+  val discoActor = context.actorOf(Props(new DiscoveryActor()))
+
+  var superMap: Map[SupervisorId, ActorRef] = Map.empty
 
   var supervisors: IndexedSeq[SupervisorState] = IndexedSeq.fill(nSupervisors)(Initialized)
 
@@ -45,7 +66,8 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
   var masterLeftWriter: MatrixWriter = null
   // TODO the master should write out R
   var masterRightWriter: MatrixWriter = null
-  var rightData: IndexedSeq[(StepId, Matrix)] = null
+  var rightData: SharedMatrices = null
+  var rightStepMap: IndexedSeq[StepId] = null
 
   var writing: Boolean = false
   var writtenPartitions: Set[PartitionId] = Set[PartitionId]()
@@ -60,12 +82,35 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
 
   def receive = {
     case Start(loader, lwriter, rwriter) =>
-      if(masterLoader == null) {
+      masterLoader = loader
+      masterLeftWriter = lwriter
+      masterRightWriter = rwriter
+      discoActor ! UseZookeeper(zkHost, zkPort, zkPath, nSupervisors + 1)
+
+    case AnnounceSupervisors(found) =>
+      superMap =
+        (for {
+          hp <- found if hp.shard != 0
+        } yield {
+          val supervisorId = hp.shard - 1
+          val address = Address("akka", "SupervisorSystem", hp.host, hp.akkaPort)
+          val matrixAddress = new InetSocketAddress(hp.host, hp.matrixPort)
+          // TODO: store matrix address
+          val supervisor = context.actorOf(
+            Props[Supervisor].withDeploy(Deploy(scope = RemoteScope(address))),
+            name = "supervisor_" + supervisorId)
+          supervisor ! SetMatrixPort(matrixAddress)
+
+          (SupervisorId(supervisorId), supervisor)
+        }).toMap
+
+      context.stop(discoActor)
+
+      if(!started) {
+        started = true
         println("sending message to load data")
-        masterLoader = loader
-        masterLeftWriter = lwriter
-        masterRightWriter = rwriter
-        supervisors = loader.rowPartition(supervisors.size)
+
+        supervisors = masterLoader.rowPartition(supervisors.size)
           .view
           .zip(supervisors)
           .zipWithIndex
@@ -79,8 +124,9 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
             case (part, _) => sys.error("unreachable")
           }
           .toIndexedSeq
-
-          rightData = (0 until totalWorkers).map { _ => (StepId(0), genPart) }
+          rightData = new SharedMatrices(matrixAddress, COLS/ totalWorkers, FACTORRANK, totalWorkers)
+          rightData.start
+          rightStepMap = (0 until totalWorkers).map { _ => StepId(0) }
       }
 
     case Loaded(idx) =>
@@ -119,31 +165,37 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
     partitionState = (0 until totalWorkers).map { partid =>
       val part = PartitionId(partid)
       val (sid, wid) = fn(part)
-      superMap(sid) ! RunStep(step0, part, wid, rightData(partid)._2, true)
+      superMap(sid) ! RunStep(step0, part, wid, rightData.getRef(partid).get, true)
       supervisors = supervisors.updated(sid.id, Working(step0, part))
       (step0, sid)
     }
   }
 
   // Update state and return the next message pair to send
-  def finishStep(step: StepId, partition: PartitionId, mat: Matrix): Unit = {
-    // Copy this into memory
-    val (currentStep, inmemoryMat) = rightData(partition.id)
-    if (currentStep == step) {
-      // println("step %d, partition %d".format(step.id, partition.id))
+  def finishStep(step: StepId, partition: PartitionId, mat: MatrixRef): Unit = {
+    val idx = partition.id
+    val currentStep = rightStepMap(partition.id)
+    if(currentStep != step) return
+    rightData.take(idx).map { dm =>
       val newStep = currentStep.next
-      // Copy, don't keep a reference to mat
-      inmemoryMat := mat
-      // Now send this matrix for it's next step:
       val (sup, work) = updateStrategy.route(newStep)(partition)
-      // val getObj = newStep.id % 20 == 0
-      val getObj = true
-      rightData = rightData.updated(partition.id, (newStep, inmemoryMat))
+      val getObj = newStep.id % 20 == 0
+      // Now send this matrix for it's next step:
+      rightStepMap = rightStepMap.updated(partition.id, newStep)
+      val newRef = try {
+        // Try our best to read
+        if(!MatrixClient.read(mat.location, mat.uuid, dm)) println("Failed to read: " + mat)
+        rightData.replace(idx, dm)
+      }
+      catch {
+        case x:AnyRef =>
+          println(x)
+          rightData.replace(idx, dm)
+      }
       if(currentStep.id < ITERS) {
-        val rs = RunStep(newStep, partition, work, mat, getObj)
         supervisors = supervisors.updated(sup.id, Working(newStep, partition))
         partitionState = partitionState.updated(partition.id, (newStep, sup))
-        superMap(sup) ! rs
+        superMap(sup) ! RunStep(newStep, partition, work, newRef.get, getObj)
       }
     }
   }
@@ -168,18 +220,19 @@ class Master(nSupervisors: Int, nWorkers: Int) extends Actor {
 }
 
 object MasterApp {
-  def apply(nSupervisors: Int, nWorkers: Int, host: String, port: Int) = new MasterApp(
-    nSupervisors, nWorkers, Distributed2.getConfig(host, port))
+  def apply(nSupervisors: Int, nWorkers: Int, host: String, port: Int, zkHost: String, zkPort: Int, zkPath: String, matAd: InetSocketAddress) =
+    new MasterApp(nSupervisors, nWorkers, Distributed2.getConfig(host, port), zkHost, zkPort, zkPath, matAd)
 }
 
-class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config) {
+class MasterApp(nSupervisors: Int, nWorkers: Int, config: Config, zkHost: String, zkPort: Int, zkPath: String, matAd: InetSocketAddress) {
+  // val loader = HadoopMatrixLoader("/Users/argyris/Downloads/logodds", 10)
   val loader = new TestLoader
   val lwriter = new PrintWriter(-1, -1)
   val rwriter = new PrintWriter(-1, -1)
 
   val system = ActorSystem("MasterSystem", config)
   val master = system.actorOf(
-    Props(new Master(nSupervisors, nWorkers)),
+    Props(new Master(nSupervisors, nWorkers, zkHost, zkPort, zkPath, matAd)),
     name = "master")
   master ! Start(loader, lwriter, rwriter)
 }

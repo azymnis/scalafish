@@ -6,6 +6,8 @@ import akka.serialization.Serializer
 import com.esotericsoftware.kryo.Kryo
 import com.esotericsoftware.kryo.io.{Input, Output}
 import org.objenesis.strategy.StdInstantiatorStrategy
+import org.zymnis.scalafish.distributed2.HadoopMatrixLoader
+import org.zymnis.scalafish.distributed2.MatrixRef
 
 import com.twitter.chill.{
   KryoSerializer => ChillSerializers,
@@ -14,6 +16,9 @@ import com.twitter.chill.{
 }
 
 import org.zymnis.scalafish.matrix._
+
+import java.net.InetSocketAddress
+import java.util.UUID
 
 import KryoImplicits._
 
@@ -48,7 +53,10 @@ class KryoAkkaPooled(system: ExtendedActorSystem) extends Serializer {
     k.setInstantiatorStrategy(new StdInstantiatorStrategy)
     k.forSubclass[ActorRef](new ActorRefSerializer(system))
     k.forSubclass[Matrix](new MatrixSerializer)
-    k.registerClasses(Seq(classOf[DenseMatrix], classOf[Matrix], classOf[SparseMatrix], classOf[RowMajorMatrix]))
+    k.forClass[HadoopMatrixLoader](HadoopMatrixLoader.kryoSerializer)
+    k.forClass[InetSocketAddress](new InetSocketAddressSerializer())
+    k.forClass[UUID](new UUIDSerializer())
+    k.registerClasses(Seq(classOf[MatrixRef], classOf[DenseMatrix], classOf[Matrix], classOf[SparseMatrix], classOf[RowMajorMatrix]))
     new KryoBuffer(k)
   }
 

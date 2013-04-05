@@ -170,8 +170,13 @@ class Client(connect: String, timeout: Int) extends Actor {
           val safeSender = ctx.asInstanceOf[ActorRef]
           println(path + Code.get(reasonCode).toString + stat)
           Code.get(reasonCode) match {
-            case Code.OK => safeSender ! GetChildrenResult(p, children.asScala.map { Path(_) }.toList, stat)
-            case _ => safeSender ! Error(reasonCode, gc)
+            case Code.OK => {
+              println(safeSender)
+              safeSender ! GetChildrenResult(p, children.asScala.map { Path(_) }.toList, stat)
+            }
+            case _ => {
+              safeSender ! Error(reasonCode, gc)
+            }
           }
         }
       }, sender)
