@@ -55,7 +55,7 @@ class Supervisor extends Actor with ActorLogging {
          .zipWithIndex
          .foreach { case ((mapData, worker), idx) =>
            val wid = WorkerId(idx)
-           val msg = InitializeData(wid, mapData)
+           val msg = InitializeData(wid, mapData.asInstanceOf[SparseMatrix])
            waitingMsg += wid -> msg
            worker ! msg
          }

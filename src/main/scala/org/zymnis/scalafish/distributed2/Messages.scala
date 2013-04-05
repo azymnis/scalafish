@@ -1,6 +1,6 @@
 package org.zymnis.scalafish.distributed2
 
-import org.zymnis.scalafish.matrix.{Matrix, DenseMatrix}
+import org.zymnis.scalafish.matrix.{Matrix, DenseMatrix, SparseMatrix}
 
 import java.io.Serializable
 import java.net.InetSocketAddress
@@ -30,7 +30,7 @@ case class RunStep(step: StepId, part: PartitionId, worker: WorkerId, ref: Matri
 }
 case class DoneStep(worker: WorkerId, step: StepId, part: PartitionId, right: MatrixRef, objOpt:
 Option[Double]) extends Message
-case class InitializeData(workerId: WorkerId, sparseMatrix: Matrix) extends Message
+case class InitializeData(workerId: WorkerId, sparseMatrix: SparseMatrix) extends Message
 case class Initialized(worker: WorkerId) extends Message
 case class Write(part: PartitionId, writer: MatrixWriter) extends Message
 case class Written(part: PartitionId) extends Message

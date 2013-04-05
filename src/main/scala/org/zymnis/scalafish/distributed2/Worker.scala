@@ -34,9 +34,9 @@ class Worker extends Actor with ActorLogging {
     case InitializeData(worker, sm) =>
       log.info("Initializing data for worker: " + worker.id)
       if (data == null) {
-        val sparseSm = SparseMatrix.zeros(sm.rows, sm.cols)
-        sparseSm := sm
-        data = sparseSm.colSlice(SUPERVISORS * WORKERS)
+        // val sparseSm = SparseMatrix.zeros(sm.rows, sm.cols)
+        // sparseSm := sm
+        data = sm.colSlice(SUPERVISORS * WORKERS)
       }
       sender ! Initialized(worker)
 
