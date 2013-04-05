@@ -42,7 +42,7 @@ class Worker extends Actor {
       println("worker received runstep command: " + step.id)
       println("partition %d, right matrix size: (%d, %d)".format(part.id, right.rows, right.cols))
       println("partition %d, left matrix size: (%d, %d)".format(part.id, left.rows, left.cols))
-      println("partition %d, data matrix nonzeros: %d".format(part.id, data.size))
+      println("partition %d, data matrix nonzeros: %d".format(part.id, data(part.id).nonZeros))
 
       doStep(data(part.id), delta(part.id), right, MU, rs.alpha)
       // Send back the result
