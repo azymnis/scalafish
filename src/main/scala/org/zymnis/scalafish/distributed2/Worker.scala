@@ -13,7 +13,7 @@ import org.zymnis.scalafish.ScalafishUpdater
 
 import Syntax._
 
-class Worker extends Actor {
+class Worker extends Actor with ActorLogging {
   import Distributed2._
   implicit val rng = new java.util.Random(3)
 
@@ -32,17 +32,17 @@ class Worker extends Actor {
 
   def receive = {
     case InitializeData(worker, sm) =>
-      println("initializing data for worker: " + worker.id)
+      log.info("Initializing data for worker: " + worker.id)
       if (data == null) {
         data = sm.colSlice(SUPERVISORS * WORKERS)
       }
       sender ! Initialized(worker)
 
     case rs @ RunStepLocal(step, part, worker, right, getObj) =>
-      println("worker received runstep command: " + step.id)
-      println("partition %d, right matrix size: (%d, %d)".format(part.id, right.rows, right.cols))
-      println("partition %d, left matrix size: (%d, %d)".format(part.id, left.rows, left.cols))
-      println("partition %d, data matrix nonzeros: %d".format(part.id, data(part.id).nonZeros))
+      log.info("Worker received runstep command: " + step.id)
+      log.info("partition %d, right matrix size: (%d, %d)".format(part.id, right.rows, right.cols))
+      log.info("partition %d, left matrix size: (%d, %d)".format(part.id, left.rows, left.cols))
+      log.info("partition %d, data matrix nonzeros: %d".format(part.id, data(part.id).nonZeros))
 
       doStep(data(part.id), delta(part.id), right, MU, rs.alpha)
       // Send back the result
@@ -60,21 +60,21 @@ class Worker extends Actor {
     delta := deltaUD
     delta *= alpha
 
-    println("done with delta update")
+    log.info("Done with delta update.")
 
     left *= (1.0f - mu * alpha)
     left -= delta * right
 
-    println("done with left update")
+    log.info("Done with left update.")
 
     delta := deltaUD
     delta *= alpha
 
-    println("done with delta update")
+    log.info("Done with delta update.")
 
     right *= (1.0f - mu * alpha)
     right -= delta.t * left
 
-    println("done with right update")
+    log.info("Done with right update.")
   }
 }

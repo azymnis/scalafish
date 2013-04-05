@@ -21,7 +21,7 @@ import Syntax._
 /** One of these should be instantiated on each host. It creates a worker for each core
  * Holds all the shared memory for the workers
  */
-class Supervisor extends Actor {
+class Supervisor extends Actor with ActorLogging {
   import Distributed2._
   //implicit val rng = new java.util.Random(2)
   implicit val rng = new java.util.Random()
@@ -76,13 +76,13 @@ class Supervisor extends Actor {
 
   def receive = {
     case SetMatrixPort(addr) =>
-      println("received matrix port: " + addr)
+      log.info("Received matrix port: " + addr)
       if(rightData != null) { rightData.stop }
       rightData = new SharedMatrices(addr, COLS / WORKERS / SUPERVISORS, FACTORRANK, WORKERS * SUPERVISORS)
       rightData.start
 
     case Load(idx, loader) =>
-      println("Supervisor %s is loading.".format(self.path))
+      log.info("Supervisor %s is loading.".format(self.path))
       load(idx, loader)
       checkIfInited
 
@@ -94,11 +94,11 @@ class Supervisor extends Actor {
       checkIfInited
 
     case rs @ RunStep(step, part, worker, mat, getObj) =>
-      println("supervisor received runstep for part: " + part.id)
+      log.info("Supervisor received runstep for part: " + part.id)
       // No one else can be using this partition
       val tempMat = rightData.take(part.id).getOrElse(DenseMatrix.zeros(ROWS, COLS))
-      println("done reading right matrix part")
-      if(!MatrixClient.read(mat.location, mat.uuid, tempMat)) println("Failed to read: " + mat)
+      log.info("Done reading right matrix part.")
+      if(!MatrixClient.read(mat.location, mat.uuid, tempMat)) log.error("Failed to read: " + mat)
       workers(worker.id) ! RunStepLocal(step, part, worker, tempMat, getObj)
     case DoneStepLocal(worker, step, part, right, obj) =>
       // Replace this matrix:

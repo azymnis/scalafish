@@ -39,7 +39,8 @@ class SharedMatrices(localAdd: InetSocketAddress, rows: Int, cols: Int, count: I
     }
 }
 
-class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPath: String, matrixAddress: InetSocketAddress) extends Actor {
+class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPath: String, matrixAddress: InetSocketAddress)
+    extends Actor with ActorLogging {
   import Distributed2._
   implicit val rng = new java.util.Random(1)
   val supervisorAddresses = Seq[InetSocketAddress]()
@@ -108,7 +109,7 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
 
       if(!started) {
         started = true
-        println("sending message to load data")
+        log.info("Sending message to load data.")
 
         supervisors = masterLoader.rowPartition(supervisors.size)
           .view
@@ -118,7 +119,7 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
             case ((loadPart, Initialized), sidx) =>
               val sid = SupervisorId(sidx)
               val actor = superMap(sid)
-              println("Found supervisor %d at %s.".format(sidx, actor))
+              log.info("Found supervisor %d at %s.".format(sidx, actor))
               actor ! Load(sid, loadPart)
               Loading(loadPart)
             case (part, _) => sys.error("unreachable")
@@ -136,13 +137,13 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
         case _ => false
       }) {
         // Everyone is loaded, now step:
-        println("all supervisors initialized")
+        log.info("All supervisors initialized.")
         if(partitionState == null) startComputation
       }
     case DoneStep(worker, step, part, mat, obj) =>
       // if (part.id == 0) println("right: " + rightData(0))
       // obj.foreach { o => println("step %d, partition %d, OBJ: %4.3f".format(step.id, part.id, o)) }
-      println("step %d, partition %d".format(step.id, part.id))
+      log.info("step %d, partition %d".format(step.id, part.id))
       val wasFinished = allRsFinished
       finishStep(step, part, mat)
       checkTermination
@@ -186,7 +187,7 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
       rightStepMap = rightStepMap.updated(partition.id, newStep)
       val newRef = try {
         // Try our best to read
-        if(!MatrixClient.read(mat.location, mat.uuid, dm)) println("Failed to read: " + mat)
+        if(!MatrixClient.read(mat.location, mat.uuid, dm)) log.error("Failed to read: " + mat)
         rightData.replace(idx, dm)
       }
       catch {
