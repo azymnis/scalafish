@@ -19,10 +19,13 @@ import java.util.UUID
 /**
  * Serves blocks of data
  */
-class MatrixDataServer(port: Int, matrices: SharedMemory[(UUID, DenseMatrix)]) {
+abstract class AbstractMatrixDataServer {
+  def port: Int
+  def matrices: SharedMemory[(UUID, DenseMatrix)]
 
   private val processThread = new AtomicReference[(ServChan, java.lang.Thread)]()
   private val running = new AtomicBoolean(false)
+
 
   def start: Boolean = {
     if(!running.getAndSet(true)) {
@@ -108,12 +111,17 @@ object SocketUtil {
   }
 }
 
-class MatrixClient {
+class MatrixDataServer(override val port: Int, override val matrices: SharedMemory[(UUID, DenseMatrix)])
+  extends AbstractMatrixDataServer
+
+object MatrixClient {
   def read(server: InetSocketAddress, matrixId: UUID, into: DenseMatrix): Boolean = {
     val chan = SocketChan.open(server)
     // Write the UUID:
     writeUUID(matrixId, chan)
-    readMatrix(chan, into)
+    val result = readMatrix(chan, into)
+    chan.close
+    result
   }
   def writeUUID(id: UUID, socket: SocketChan): Unit = {
     val uuidBuf = ByteBuffer.allocate(16)
@@ -139,8 +147,7 @@ val port = 10003
 val srv = new MatrixDataServer(port, shm)
 srv.start
 val uuidmat = shm.effect(0) { uuid => println(uuid); (uuid, uuid) }
-val client = new MatrixClient
 val dst = DenseMatrix.zeros(10,10)
-client.read(new java.net.InetSocketAddress("127.0.0.1", port), uuidmat.get._1, dst)
+MatrixClient.read(new java.net.InetSocketAddress("127.0.0.1", port), uuidmat.get._1, dst)
 srv.stop
 */

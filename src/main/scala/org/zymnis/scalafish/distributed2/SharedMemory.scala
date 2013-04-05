@@ -17,6 +17,9 @@ class SharedMemory[A <: AnyRef](val size: Int) {
   private val data = new AtomicReferenceArray[A](size)
 
   def take(idx: Int): Option[A] = Option(data.getAndSet(idx, null.asInstanceOf[A]))
+  def get(idx: Int): Option[A] = Option(data.get(idx))
+  def swap(idx: Int, item: A): Option[A] =
+    Option(data.getAndSet(idx, item))
 
   def findTake(fn: A => Boolean): Option[(Int, A)] = {
     @tailrec
@@ -40,8 +43,7 @@ class SharedMemory[A <: AnyRef](val size: Int) {
 
   def effect[S](idx: Int)(fn: (A) => (S,A)): Option[S] = {
     take(idx).map { a =>
-      val (s, newA) = fn(a)
-      // Must succeed
+      val (s, newA) = fn(a);
       put(idx, newA)
       s
     }

@@ -15,7 +15,29 @@ import scala.util.Random
 import org.zymnis.scalafish.matrix._
 import org.zymnis.scalafish.ScalafishUpdater
 
+import java.net.InetSocketAddress
+
 import Syntax._
+
+import java.util.UUID
+
+class SharedMatrices(localAdd: InetSocketAddress, rows: Int, cols: Int, count: Int)(implicit rng: java.util.Random)
+  extends AbstractMatrixDataServer {
+    override def port = localAdd.getPort
+
+    override val matrices = SharedMemory((0 until count).map { i => (UUID.randomUUID, DenseMatrix.rand(rows, cols)) })
+
+    def getRef(idx: Int): Option[MatrixRef] =
+      matrices.get(idx).map { case (uuid, _) => MatrixRef(localAdd, uuid) }
+
+    def take(idx: Int): Option[DenseMatrix] = matrices.take(idx).map { _._2 }
+    def replace(idx: Int, dm: DenseMatrix): Option[MatrixRef] = {
+      assert(dm.rows == rows, "Rows don't match")
+      assert(dm.cols == cols, "Cols don't match")
+      val newUuid = UUID.randomUUID
+      if(matrices.put(idx, (newUuid, dm))) Some(MatrixRef(localAdd, newUuid)) else None
+    }
+}
 
 class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPath: String) extends Actor {
   import Distributed2._
@@ -44,7 +66,8 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
   var masterLeftWriter: MatrixWriter = null
   // TODO the master should write out R
   var masterRightWriter: MatrixWriter = null
-  var rightData: IndexedSeq[(StepId, Matrix)] = null
+  var rightData: SharedMatrices = null
+  var rightStepMap: IndexedSeq[StepId] = null
 
   var writing: Boolean = false
   var writtenPartitions: Set[PartitionId] = Set[PartitionId]()
@@ -56,6 +79,9 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
 
   def genPart: Matrix =
     DenseMatrix.rand(COLS/nSupervisors/nWorkers, FACTORRANK)
+
+  def getMatrixServerAddress: InetSocketAddress = sys.error("Not implemented")
+  def matrixServerAddressOf(s: SupervisorId): InetSocketAddress = sys.error("Not implemented")
 
   def receive = {
     case Start(loader, lwriter, rwriter) =>
@@ -71,11 +97,11 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
         } yield {
           val supervisorId = hp.shard - 1
           val address = Address("akka", "SupervisorSystem", hp.host, hp.akkaPort)
-
+          val matrixAddress = new InetSocketAddress(hp.host, hp.matrixPort)
           val supervisor = context.actorOf(
             Props[Supervisor].withDeploy(Deploy(scope = RemoteScope(address))),
             name = "supervisor_" + supervisorId)
-          supervisor ! SetMatrixPort(hp.matrixPort)
+          supervisor ! SetMatrixPort(matrixAddress)
 
           (SupervisorId(supervisorId), supervisor)
         }).toMap
@@ -100,8 +126,9 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
             case (part, _) => sys.error("unreachable")
           }
           .toIndexedSeq
-
-          rightData = (0 until totalWorkers).map { _ => (StepId(0), genPart) }
+          rightData = new SharedMatrices(getMatrixServerAddress, ROWS, COLS, totalWorkers)
+          rightData.start
+          rightStepMap = (0 until totalWorkers).map { _ => StepId(0) }
       }
 
     case Loaded(idx) =>
@@ -140,31 +167,37 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
     partitionState = (0 until totalWorkers).map { partid =>
       val part = PartitionId(partid)
       val (sid, wid) = fn(part)
-      superMap(sid) ! RunStep(step0, part, wid, rightData(partid)._2, true)
+      superMap(sid) ! RunStep(step0, part, wid, rightData.getRef(partid).get, true)
       supervisors = supervisors.updated(sid.id, Working(step0, part))
       (step0, sid)
     }
   }
 
   // Update state and return the next message pair to send
-  def finishStep(step: StepId, partition: PartitionId, mat: Matrix): Unit = {
-    // Copy this into memory
-    val (currentStep, inmemoryMat) = rightData(partition.id)
-    if (currentStep == step) {
-      // println("step %d, partition %d".format(step.id, partition.id))
+  def finishStep(step: StepId, partition: PartitionId, mat: MatrixRef): Unit = {
+    val idx = partition.id
+    val currentStep = rightStepMap(partition.id)
+    if(currentStep != step) return
+    rightData.take(idx).map { dm =>
       val newStep = currentStep.next
-      // Copy, don't keep a reference to mat
-      inmemoryMat := mat
-      // Now send this matrix for it's next step:
       val (sup, work) = updateStrategy.route(newStep)(partition)
-      // val getObj = newStep.id % 20 == 0
-      val getObj = true
-      rightData = rightData.updated(partition.id, (newStep, inmemoryMat))
+      val getObj = newStep.id % 20 == 0
+      // Now send this matrix for it's next step:
+      rightStepMap = rightStepMap.updated(partition.id, newStep)
+      val newRef = try {
+        // Try our best to read
+        if(!MatrixClient.read(mat.location, mat.uuid, dm)) println("Failed to read: " + mat)
+        rightData.replace(idx, dm)
+      }
+      catch {
+        case x:AnyRef =>
+          println(x)
+          rightData.replace(idx, dm)
+      }
       if(currentStep.id < ITERS) {
-        val rs = RunStep(newStep, partition, work, mat, getObj)
         supervisors = supervisors.updated(sup.id, Working(newStep, partition))
         partitionState = partitionState.updated(partition.id, (newStep, sup))
-        superMap(sup) ! rs
+        superMap(sup) ! RunStep(newStep, partition, work, newRef.get, getObj)
       }
     }
   }

@@ -14,6 +14,8 @@ import scala.util.Random
 import org.zymnis.scalafish.matrix._
 import org.zymnis.scalafish.ScalafishUpdater
 
+import java.net.InetSocketAddress
+
 import Syntax._
 
 /** One of these should be instantiated on each host. It creates a worker for each core
@@ -21,7 +23,8 @@ import Syntax._
  */
 class Supervisor extends Actor {
   import Distributed2._
-  implicit val rng = new java.util.Random(2)
+  //implicit val rng = new java.util.Random(2)
+  implicit val rng = new java.util.Random()
 
   var supervisorIdx: SupervisorId = null
   var initialized = false
@@ -38,6 +41,8 @@ class Supervisor extends Actor {
 
   implicit val timeout = Timeout(timeToWait)
   implicit val ec = ExecutionContext.defaultExecutionContext(context.system)
+
+  var rightData: SharedMatrices = null
 
   def load(sIdx: SupervisorId, loader: MatrixLoader): Unit =
     if(!initialized) {
@@ -70,7 +75,10 @@ class Supervisor extends Actor {
   }
 
   def receive = {
-    case SetMatrixPort(port) => matrixPort = port
+    case SetMatrixPort(addr) =>
+      if(rightData != null) { rightData.stop }
+      rightData = new SharedMatrices(addr, ROWS, COLS, WORKERS * SUPERVISORS)
+      rightData.start
 
     case Load(idx, loader) =>
       println("Supervisor %s is loading.".format(self.path))
@@ -85,10 +93,16 @@ class Supervisor extends Actor {
       checkIfInited
 
     case rs @ RunStep(step, part, worker, mat, getObj) =>
-      workers(worker.id) ! rs
-    case ds: DoneStep =>
-      // TODO, cache? or will lost messages be rare enough?
-      context.parent ! ds
+      // No one else can be using this partition
+      val tempMat = rightData.take(part.id).getOrElse(DenseMatrix.zeros(ROWS, COLS))
+      if(!MatrixClient.read(mat.location, mat.uuid, tempMat)) println("Failed to read: " + mat)
+      workers(worker.id) ! RunStepLocal(step, part, worker, tempMat, getObj)
+    case DoneStepLocal(worker, step, part, right, obj) =>
+      // Replace this matrix:
+      rightData.replace(part.id, right).map { ref =>
+        // If somehow this position is already in play, we lose this step
+        context.parent ! DoneStep(worker, step, part, ref, obj)
+      }
 
     case Write(basePart, mwriter) =>
       mwriter.rowPartition(WORKERS)

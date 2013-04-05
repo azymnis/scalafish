@@ -1,8 +1,10 @@
 package org.zymnis.scalafish.distributed2
 
-import org.zymnis.scalafish.matrix.Matrix
+import org.zymnis.scalafish.matrix.{Matrix, DenseMatrix}
 
 import java.io.Serializable
+import java.net.InetSocketAddress
+import java.util.UUID
 
 /*
  * Basic types to wrap ints so we don't get confused
@@ -22,13 +24,20 @@ trait Message
 case class Start(loader: MatrixLoader, lwriter: MatrixWriter, rwriter: MatrixWriter) extends Message
 case class Load(supervisor: SupervisorId, loader: MatrixLoader) extends Message
 case class Loaded(supervisor: SupervisorId) extends Message
-case class RunStep(step: StepId, part: PartitionId, worker: WorkerId, data: Matrix, getObj: Boolean) extends Message {
+case class MatrixRef(location: InetSocketAddress, uuid: UUID)
+case class RunStep(step: StepId, part: PartitionId, worker: WorkerId, ref: MatrixRef, getObj: Boolean) extends Message {
   def alpha: Float = (Distributed2.ALPHA / (step.id + 1)).toFloat
 }
-case class DoneStep(worker: WorkerId, step: StepId, part: PartitionId, right: Matrix, objOpt:
+case class DoneStep(worker: WorkerId, step: StepId, part: PartitionId, right: MatrixRef, objOpt:
 Option[Double]) extends Message
 case class InitializeData(workerId: WorkerId, sparseMatrix: Matrix) extends Message
 case class Initialized(worker: WorkerId) extends Message
 case class Write(part: PartitionId, writer: MatrixWriter) extends Message
 case class Written(part: PartitionId) extends Message
-case class SetMatrixPort(port: Int) extends Message
+case class SetMatrixPort(addr: InetSocketAddress) extends Message
+
+// These messages should never be serialized (only supervisor <=> worker)
+case class RunStepLocal(step: StepId, part: PartitionId, worker: WorkerId, ref: DenseMatrix, getObj: Boolean) {
+  def alpha: Float = (Distributed2.ALPHA / (step.id + 1)).toFloat
+}
+case class DoneStepLocal(worker: WorkerId, step: StepId, part: PartitionId, right: DenseMatrix, objOpt: Option[Double])

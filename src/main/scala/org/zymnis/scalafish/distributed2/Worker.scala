@@ -38,11 +38,11 @@ class Worker extends Actor {
       }
       sender ! Initialized(worker)
 
-    case rs @ RunStep(step, part, worker, right, getObj) =>
+    case rs @ RunStepLocal(step, part, worker, right, getObj) =>
       doStep(data(part.id), delta(part.id), right, MU, rs.alpha)
       // Send back the result
       // if (worker.id == 0) println("left: " + left)
-      sender ! DoneStep(worker, step, part, right, calcObj(right, data(part.id), delta(part.id), getObj))
+      sender ! DoneStepLocal(worker, step, part, right, calcObj(right, data(part.id), delta(part.id), getObj))
 
     case Write(part, w) =>
       if(!written) { w.write(left); written = true }
