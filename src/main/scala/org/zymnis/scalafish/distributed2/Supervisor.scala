@@ -78,7 +78,7 @@ class Supervisor extends Actor {
     case SetMatrixPort(addr) =>
       println("received matrix port: " + addr)
       if(rightData != null) { rightData.stop }
-      rightData = new SharedMatrices(addr, ROWS, COLS, WORKERS * SUPERVISORS)
+      rightData = new SharedMatrices(addr, COLS / WORKERS / SUPERVISORS, FACTORRANK, WORKERS * SUPERVISORS)
       rightData.start
 
     case Load(idx, loader) =>

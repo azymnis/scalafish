@@ -80,8 +80,6 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
   def genPart: Matrix =
     DenseMatrix.rand(COLS/nSupervisors/nWorkers, FACTORRANK)
 
-  def getMatrixServerAddress: InetSocketAddress = matrixAddress
-
   def receive = {
     case Start(loader, lwriter, rwriter) =>
       masterLoader = loader
@@ -126,7 +124,7 @@ class Master(nSupervisors: Int, nWorkers: Int, zkHost: String, zkPort: Int, zkPa
             case (part, _) => sys.error("unreachable")
           }
           .toIndexedSeq
-          rightData = new SharedMatrices(getMatrixServerAddress, ROWS, COLS, totalWorkers)
+          rightData = new SharedMatrices(matrixAddress, COLS/ totalWorkers, FACTORRANK, totalWorkers)
           rightData.start
           rightStepMap = (0 until totalWorkers).map { _ => StepId(0) }
       }
