@@ -35,12 +35,20 @@ object Indexer {
 trait LongPredicate {
   def apply(l: Long): Boolean
 }
+trait LongFn {
+  def apply(l: Long): Long
+}
 
 // Used to iterator over indexed (row, col) pairs
 trait LongIterator { self =>
   def hasNext: Boolean
   def next: Long
   // Some combinators:
+  def map(fn: LongFn): LongIterator = new LongIterator {
+    def hasNext = self.hasNext
+    def next = fn(self.next)
+  }
+
   def filter(lp: LongPredicate): LongIterator = new LongIterator {
     var advanced = false
     var nextLong: Long = 0L

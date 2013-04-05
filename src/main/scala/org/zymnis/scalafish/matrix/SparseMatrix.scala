@@ -21,16 +21,16 @@ class SparseMatrix private (override val rows: Int,
     val thisCols = colMax - colMin
     val newIndexer = Indexer.rowMajor(thisCols)
 
-    new SparseMatrix(thisRows, thisCols, newIndexer, hashMap) {
+    new SparseMatrix(thisRows, thisCols, newIndexer, hashMap) { blockSelf =>
       override def mapIdx(idx: Long): Long = {
-        val r = this.indexer.row(idx) + rowMin
-        val c = this.indexer.col(idx) + colMin
+        val r = newIndexer.row(idx) + rowMin
+        val c = newIndexer.col(idx) + colMin
         self.mapIdx(self.indexer.rowCol(r,c))
       }
       override def invMapIdx(idx: Long): Long = {
         val selfInv = self.invMapIdx(idx)
-        val r = this.indexer.row(selfInv) - rowMin
-        val c = this.indexer.col(selfInv) - colMin
+        val r = newIndexer.row(selfInv) - rowMin
+        val c = newIndexer.col(selfInv) - colMin
         this.indexer.rowCol(r,c)
       }
       override def denseIndices = self.denseIndices.filter(
@@ -39,12 +39,20 @@ class SparseMatrix private (override val rows: Int,
           val c = self.indexer.col(l) - colMin
           (0 <= r && r < thisRows) && (0 <= c && c < thisCols)
         }
+      }).map(new LongFn {
+        def apply(idx: Long) = {
+          val r = self.indexer.row(idx) - rowMin
+          val c = self.indexer.col(idx) - colMin
+          newIndexer.rowCol(r,c)
+        }
       })
+
       override def nonZeros = {
-        val iter = denseIndices
+        val iter = blockSelf.denseIndices
         var nz = 0L
         while(iter.hasNext) {
           nz += 1L
+          iter.next
         }
         nz
       }
@@ -65,6 +73,9 @@ class SparseMatrix private (override val rows: Int,
       self.indexer.rowCol(c, r)
     }
     override def t = self
+    override def denseIndices = self.denseIndices.map {
+      new LongFn { def apply(idx: Long) = invMapIdx(idx) }
+    }
   }
 
   protected def mapIdx(idx: Long): Long = idx

@@ -223,6 +223,41 @@ object MatrixProperties extends Properties("Matrix") {
       diff < FNORM_EPS
     }
 
+  /**
+   * Sum of blockview density is the same as original density
+   */
+  def rowBlockViewLaw(rows: Int, cols: Int, blocks: Int)
+    (fn: (Matrix, IndexedSeq[Matrix]) => Boolean)(implicit cons: Arbitrary[MatrixCons]) = {
+    val density = scala.math.random
+    implicit val arb = Arbitrary(denseOrSparse(rows * blocks, cols, density))
+    forAll { (a: Matrix) =>
+      val blockViews = a.rowSlice(blocks)
+      fn(a, blockViews)
+    }
+  }
+  property("rowBlockView preserves nonZeros") = rowBlockViewLaw(3,4,2) { (mat, blockViews) =>
+    mat.nonZeros == blockViews.map { _.nonZeros }.sum
+  }
+  def blockViewLaw(rows: Int, cols: Int, blocks: Int)
+    (fn: (Matrix, IndexedSeq[Matrix]) => Boolean)(implicit cons: Arbitrary[MatrixCons]) = {
+    val density = scala.math.random
+    implicit val arb = Arbitrary(denseOrSparse(rows * blocks, cols * blocks, density))
+    forAll { (a: Matrix) =>
+      val blockViews = a.colSlice(blocks).flatMap { _.rowSlice(blocks) }
+      fn(a, blockViews)
+    }
+  }
+  property("blockView preserves nonZeros") = blockViewLaw(3,4,2) { (mat, blockViews) =>
+    val bnz = blockViews.map { _.nonZeros }.sum
+    if(!(mat.nonZeros == blockViews.map { _.nonZeros }.sum)) {
+      println("mat: " + mat)
+      println("nz: " + mat.nonZeros)
+      println("blocks: " + blockViews)
+      println("bnz: " + blockViews.map { _.nonZeros })
+      false
+    } else true
+  }
+
   // MatrixUpdaters work as expected:
   // "C += A * B is C = C + (A * B)") = forAll (a:
   def incrementProductLaw(rows: Int, cols: Int, inc: Boolean = true)(implicit cons: Arbitrary[MatrixCons]) = {
@@ -250,6 +285,7 @@ object MatrixProperties extends Properties("Matrix") {
       eq(c, c2)
     }
   }
+
   property("C += A*B is the same as C = C + (A*B)") = incrementProductLaw(2,3)
   property("C += A*B is the same as C = C + (A*B)") = incrementProductLaw(2,30)
   property("C += A*B is the same as C = C + (A*B)") = incrementProductLaw(20,3)
